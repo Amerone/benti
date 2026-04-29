@@ -49,7 +49,7 @@ def create_router() -> APIRouter:
 
     @router.get("/impacts/latest")
     async def latest_impact(request: Request):
-        impact = getattr(request.app.state, "latest_commission_impact", None) or dict(_LATEST_IMPACT_DEFAULT)
+        impact = await run_in_threadpool(request.app.state.commission_graph.latest_impact)
         return envelope.ok(impact, trace=request.state.trace)
 
     return router

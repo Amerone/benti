@@ -254,15 +254,16 @@ def validate_commission_expected(question: CommissionCQ, rows: list[dict[str, An
     expected_count = int(question.expected["row_count"])
     if len(rows) != expected_count:
         raise AssertionError(f"{question.id} expected {expected_count} rows, got {len(rows)}")
-    if not rows:
-        return
-    row = rows[0]
-    for key, expected in question.expected.items():
-        if key == "row_count":
-            continue
-        actual = row.get(key)
-        if str(actual) != expected:
-            raise AssertionError(f"{question.id} expected {key}={expected}, got {actual}")
+    for index, row in enumerate(rows, start=1):
+        for field in question.evidence_fields:
+            if field not in row:
+                raise AssertionError(f"{question.id} row {index} missing evidence field: {field}")
+        for key, expected in question.expected.items():
+            if key == "row_count":
+                continue
+            actual = row.get(key)
+            if str(actual) != expected:
+                raise AssertionError(f"{question.id} row {index} expected {key}={expected}, got {actual}")
 
 
 def _serialize_payload(payload: dict[str, Any]) -> str:

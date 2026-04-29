@@ -27,6 +27,10 @@ def _client() -> TestClient:
     )
 
 
+def _client_for_repo(repository: BusinessGraphRepository) -> TestClient:
+    return TestClient(create_app(repository=repository, llm_provider=UnavailableProvider()))
+
+
 def test_commission_demo_reset_and_upgrade_flow():
     with _client() as client:
         reset_response = client.post("/api/v1/commission/demo/reset")
@@ -88,6 +92,21 @@ def test_commission_demo_reset_and_upgrade_flow():
         assert latest_by_task["T-001"]["new_standard"] == "V2"
         assert latest_by_task["T-001"]["flipped"] is True
         assert latest_by_task["T-002"]["new_standard"] == "V2"
+
+
+def test_latest_commission_impact_is_loaded_from_persisted_graph_after_app_restart():
+    repository = BusinessGraphRepository()
+    with _client_for_repo(repository) as client:
+        assert client.post("/api/v1/commission/demo/reset").status_code == 200
+        upgrade_response = client.post("/api/v1/commission/standards/GJB-7821-2024/upgrade")
+        assert upgrade_response.status_code == 200
+        upgrade_payload = upgrade_response.json()["data"]
+
+    with _client_for_repo(repository) as restarted_client:
+        latest_response = restarted_client.get("/api/v1/commission/impacts/latest")
+
+    assert latest_response.status_code == 200
+    assert latest_response.json()["data"] == upgrade_payload
 
 
 def test_cq_engine_template_only_generation_and_draft_review():

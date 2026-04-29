@@ -139,6 +139,7 @@ def test_packaged_ontologies_and_swrl_examples_are_valid() -> None:
         Graph().parse(by_id["manufacturing-trial"].ttl_path, format="turtle")
         Graph().parse(by_id["process-window"].ttl_path, format="turtle")
         Graph().parse(by_id["equipment-health"].ttl_path, format="turtle")
+        Graph().parse(by_id["commission-testing"].ttl_path, format="turtle")
 
 
 def test_commission_testing_ontology_is_discovered() -> None:
@@ -154,3 +155,13 @@ def test_commission_testing_ontology_is_discovered() -> None:
     assert descriptor.result_graph_iri.endswith("/commission-testing/result")
     assert descriptor.spec_graph_iri.endswith("/commission-testing/spec")
     assert descriptor.ttl_path.name == "commission-testing.ttl"
+    text = descriptor.ttl_path.read_text(encoding="utf-8")
+    for property_name in [
+        "taskName",
+        "recordItemCode",
+        "resultStandardCode",
+        "resultStandardVersion",
+        "impactItemCode",
+        "impactTaskStatus",
+    ]:
+        assert f"cto:{property_name}" in text

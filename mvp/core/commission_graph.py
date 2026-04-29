@@ -49,6 +49,14 @@ def _text(graph: Graph, subject: URIRef, predicate: URIRef) -> str:
     return text
 
 
+def _text_any(graph: Graph, subject: URIRef, *predicates: URIRef) -> str:
+    for predicate in predicates:
+        text = _text(graph, subject, predicate)
+        if text:
+            return text
+    return ""
+
+
 def _number(graph: Graph, subject: URIRef, predicate: URIRef) -> float:
     obj = next(graph.objects(subject, predicate), None)
     return float(obj.toPython()) if obj is not None else 0.0
@@ -79,7 +87,7 @@ class CommissionGraphService:
     def reset_demo(self) -> dict[str, Any]:
         self.repository.load_ontologies(reload=False)
         data_graph = self.repository.graph(ONTOLOGY_ID, "data")
-        data_graph.remove((None, None, None))
+        self._clear_demo_resources(data_graph)
 
         demo = self._load_demo()
         order = demo["order"]
@@ -183,6 +191,24 @@ class CommissionGraphService:
                 }
             )
         return {"order_no": order_no, "tasks": tasks}
+
+    def latest_impact(self) -> dict[str, Any]:
+        data_graph = self.repository.graph(ONTOLOGY_ID, "data")
+        impacts = []
+        for impact_node in self._impact_nodes(data_graph):
+            impact = dict(self._serialize_impact(data_graph, impact_node))
+            impact.pop("impact_id", None)
+            impacts.append(impact)
+        impacts.sort(key=lambda item: (item["task_id"], item["item_code"]))
+        if not impacts:
+            return {"changed": []}
+        latest_version = impacts[0]["new_standard"]
+        return {
+            "ontology_id": ONTOLOGY_ID,
+            "standard_code": self._load_demo()["standards"]["new"]["standard_code"],
+            "upgraded_to": latest_version,
+            "changed": impacts,
+        }
 
     def upgrade_standard_to_demo_v2(self) -> dict[str, Any]:
         data_graph = self.repository.graph(ONTOLOGY_ID, "data")
@@ -291,7 +317,7 @@ class CommissionGraphService:
         data_graph.set((project_node, CTO.decomposesToTask, task_node))
         data_graph.set((task_node, CTO.taskForProject, project_node))
         data_graph.set((task_node, CTO.localId, Literal(task_id)))
-        data_graph.set((task_node, CTO.projectName, Literal(task_name)))
+        data_graph.set((task_node, CTO.taskName, Literal(task_name)))
         data_graph.set((task_node, CTO.taskStatus, Literal(status)))
         return task_node
 
@@ -310,7 +336,7 @@ class CommissionGraphService:
         data_graph.add((record_node, RDF.type, CTO.TestDataRecord))
         data_graph.set((item_node, CTO.recordsData, record_node))
         data_graph.set((record_node, CTO.localId, Literal(record_id)))
-        data_graph.set((record_node, CTO.itemCode, Literal(item["item_code"])))
+        data_graph.set((record_node, CTO.recordItemCode, Literal(item["item_code"])))
         data_graph.set((record_node, CTO.unit, Literal(item.get("unit", ""))))
         data_graph.set((record_node, CTO.measuredValue, _decimal_literal(item["value"])))
         return record_node
@@ -353,8 +379,8 @@ class CommissionGraphService:
         data_graph.set((result_node, CTO.localId, Literal(result.result_id)))
         data_graph.set((result_node, CTO.resultStatus, Literal(result.status)))
         data_graph.set((result_node, CTO.resultReason, Literal(result.reason)))
-        data_graph.set((result_node, CTO.standardCode, Literal(result.standard_code)))
-        data_graph.set((result_node, CTO.standardVersion, Literal(result.standard_version)))
+        data_graph.set((result_node, CTO.resultStandardCode, Literal(result.standard_code)))
+        data_graph.set((result_node, CTO.resultStandardVersion, Literal(result.standard_version)))
         data_graph.set((result_node, CTO.judgedAt, _datetime_literal()))
         data_graph.set((result_node, CTO.evaluatedAgainstCriterion, criterion_node))
         return result_node
@@ -371,7 +397,7 @@ class CommissionGraphService:
         new_result_node = _node("result", impact.new_result_id)
         data_graph.add((impact_node, RDF.type, CTO.ReevaluationImpact))
         data_graph.set((impact_node, CTO.localId, Literal(impact.impact_id)))
-        data_graph.set((impact_node, CTO.itemCode, Literal(item_code)))
+        data_graph.set((impact_node, CTO.impactItemCode, Literal(item_code)))
         data_graph.set((impact_node, CTO.previousResult, old_result_node))
         data_graph.set((impact_node, CTO.newResult, new_result_node))
         data_graph.set((impact_node, CTO.impactsTask, task_node))
@@ -407,6 +433,10 @@ class CommissionGraphService:
         nodes = [node for node in data_graph.subjects(CTO.impactsTask, task_node) if isinstance(node, URIRef)]
         return sorted(nodes, key=lambda node: _text(data_graph, node, CTO.localId))
 
+    def _impact_nodes(self, data_graph: Graph) -> list[URIRef]:
+        nodes = [node for node in data_graph.subjects(RDF.type, CTO.ReevaluationImpact) if isinstance(node, URIRef)]
+        return sorted(nodes, key=lambda node: _text(data_graph, node, CTO.localId))
+
     def _result_nodes_for_record(self, data_graph: Graph, record_node: URIRef) -> list[URIRef]:
         nodes = [node for node in data_graph.objects(record_node, CTO.hasJudgementResult) if isinstance(node, URIRef)]
         return sorted(nodes, key=lambda node: _result_no(_text(data_graph, node, CTO.localId)))
@@ -415,7 +445,11 @@ class CommissionGraphService:
         return result_nodes[-1] if result_nodes else None
 
     def _latest_result_for_standard(self, data_graph: Graph, result_nodes: list[URIRef], standard_version: str) -> URIRef | None:
-        matches = [node for node in result_nodes if _text(data_graph, node, CTO.standardVersion) == standard_version]
+        matches = [
+            node
+            for node in result_nodes
+            if _text_any(data_graph, node, CTO.resultStandardVersion, CTO.standardVersion) == standard_version
+        ]
         return matches[-1] if matches else None
 
     def _latest_standard_node(self, data_graph: Graph) -> URIRef | None:
@@ -495,8 +529,8 @@ class CommissionGraphService:
             "result_id": _text(data_graph, result_node, CTO.localId),
             "status": _text(data_graph, result_node, CTO.resultStatus),
             "reason": _text(data_graph, result_node, CTO.resultReason),
-            "standard_code": _text(data_graph, result_node, CTO.standardCode),
-            "standard_version": _text(data_graph, result_node, CTO.standardVersion),
+            "standard_code": _text_any(data_graph, result_node, CTO.resultStandardCode, CTO.standardCode),
+            "standard_version": _text_any(data_graph, result_node, CTO.resultStandardVersion, CTO.standardVersion),
         }
 
     def _serialize_impact(self, data_graph: Graph, impact_node: URIRef) -> dict[str, Any]:
@@ -506,11 +540,12 @@ class CommissionGraphService:
         new_result = self._serialize_result(data_graph, new_result_node)
         record_node = next(data_graph.subjects(CTO.hasJudgementResult, old_result_node), None)
         task_node = _object(data_graph, impact_node, CTO.impactsTask)
-        task_status = _text(data_graph, impact_node, CTO.taskStatus) or _text(data_graph, task_node, CTO.taskStatus)
+        task_status = _text_any(data_graph, impact_node, CTO.impactTaskStatus, CTO.taskStatus) or _text(data_graph, task_node, CTO.taskStatus)
         return {
             "impact_id": _text(data_graph, impact_node, CTO.localId),
+            "task_id": _text(data_graph, task_node, CTO.localId),
             "data_record_id": _text(data_graph, record_node, CTO.localId),
-            "item_code": _text(data_graph, impact_node, CTO.itemCode),
+            "item_code": _text_any(data_graph, impact_node, CTO.impactItemCode, CTO.itemCode),
             "old_status": old_result["status"],
             "new_status": new_result["status"],
             "flipped": str(next(data_graph.objects(impact_node, CTO.flipped), Literal(False)).toPython()).lower() == "true",
@@ -539,11 +574,11 @@ class CommissionGraphService:
             result_id=_text(data_graph, result_node, CTO.localId),
             data_record_id=_text(data_graph, record_node, CTO.localId),
             task_id=task_id,
-            item_code=_text(data_graph, record_node, CTO.itemCode),
+            item_code=_text_any(data_graph, record_node, CTO.recordItemCode, CTO.itemCode),
             status=_text(data_graph, result_node, CTO.resultStatus),
             reason=_text(data_graph, result_node, CTO.resultReason),
-            standard_code=_text(data_graph, result_node, CTO.standardCode),
-            standard_version=_text(data_graph, result_node, CTO.standardVersion),
+            standard_code=_text_any(data_graph, result_node, CTO.resultStandardCode, CTO.standardCode),
+            standard_version=_text_any(data_graph, result_node, CTO.resultStandardVersion, CTO.standardVersion),
         )
 
     def _task_id_for_record(self, data_graph: Graph, record_node: URIRef) -> str:
@@ -555,7 +590,34 @@ class CommissionGraphService:
         data_graph.set((task_node, CTO.taskStatus, Literal(status)))
 
     def _set_impact_task_status(self, data_graph: Graph, impact_node: URIRef, status: str) -> None:
-        data_graph.set((impact_node, CTO.taskStatus, Literal(status)))
+        data_graph.set((impact_node, CTO.impactTaskStatus, Literal(status)))
 
     def _sync(self) -> None:
         self.repository._sync_graph_to_remote(ONTOLOGY_ID, "data")
+
+    def _clear_demo_resources(self, data_graph: Graph) -> None:
+        demo_prefixes = tuple(f"{INDIVIDUAL_BASE}/{category}/" for category in _DEMO_RESOURCE_CATEGORIES)
+        demo_nodes: set[URIRef] = set()
+        for subject in data_graph.subjects():
+            if isinstance(subject, URIRef) and str(subject).startswith(demo_prefixes):
+                demo_nodes.add(subject)
+        triples_to_remove = []
+        for subject, predicate, obj in data_graph:
+            if subject in demo_nodes or (isinstance(obj, URIRef) and obj in demo_nodes):
+                triples_to_remove.append((subject, predicate, obj))
+        for triple in triples_to_remove:
+            data_graph.remove(triple)
+
+
+_DEMO_RESOURCE_CATEGORIES = (
+    "order",
+    "product",
+    "project",
+    "task",
+    "item",
+    "record",
+    "standard",
+    "criterion",
+    "result",
+    "impact",
+)

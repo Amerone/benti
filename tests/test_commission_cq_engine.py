@@ -7,7 +7,13 @@ from rdflib import Literal
 from rdflib.namespace import RDF
 
 from mvp.core import commission_graph
-from mvp.core.cq_engine import CQDraftService, CQEngineError, parse_commission_cq_markdown
+from mvp.core.cq_engine import (
+    CQDraftService,
+    CQEngineError,
+    CommissionCQ,
+    parse_commission_cq_markdown,
+    validate_commission_expected,
+)
 from mvp.core.graph import BusinessGraphRepository
 from mvp.core.llm.base import LLMProvider
 from mvp.core.ontology_draft import DraftGenerationError, generate_commission_draft
@@ -71,6 +77,41 @@ def test_parse_commission_cq_markdown_reads_all_plan_cqs():
     assert questions[3].metadata["Intent"] == "standard_upgrade_flips"
     assert questions[3].expected["new_status"] == "Fail"
     assert "GRAPH <{{data_graph_iri}}>" in questions[3].sparql
+
+
+def test_validate_commission_expected_checks_every_row_and_evidence_field():
+    question = CommissionCQ(
+        id="CQ-CT-900",
+        title="Every row has the expected order",
+        metadata={},
+        sparql="SELECT * WHERE {}",
+        expected={"row_count": "2", "order_no": "CO-2024-001"},
+        evidence_fields=["order_no", "project_id"],
+    )
+
+    validate_commission_expected(
+        question,
+        [
+            {"order_no": "CO-2024-001", "project_id": "P-001"},
+            {"order_no": "CO-2024-001", "project_id": "P-002"},
+        ],
+    )
+    with pytest.raises(AssertionError, match="row 2 expected order_no=CO-2024-001"):
+        validate_commission_expected(
+            question,
+            [
+                {"order_no": "CO-2024-001", "project_id": "P-001"},
+                {"order_no": "WRONG", "project_id": "P-002"},
+            ],
+        )
+    with pytest.raises(AssertionError, match="row 2 missing evidence field: project_id"):
+        validate_commission_expected(
+            question,
+            [
+                {"order_no": "CO-2024-001", "project_id": "P-001"},
+                {"order_no": "CO-2024-001"},
+            ],
+        )
 
 
 def test_parse_commission_cq_markdown_rejects_missing_required_metadata(tmp_path):

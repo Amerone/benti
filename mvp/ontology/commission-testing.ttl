@@ -42,9 +42,11 @@ cto:requester rdf:type owl:DatatypeProperty ; rdfs:domain cto:CommissionOrder ; 
 cto:productName rdf:type owl:DatatypeProperty ; rdfs:domain cto:Product ; rdfs:range xsd:string .
 cto:productModel rdf:type owl:DatatypeProperty ; rdfs:domain cto:Product ; rdfs:range xsd:string .
 cto:projectName rdf:type owl:DatatypeProperty ; rdfs:domain cto:TestProject ; rdfs:range xsd:string .
+cto:taskName rdf:type owl:DatatypeProperty ; rdfs:domain cto:TestTask ; rdfs:range xsd:string .
 cto:taskStatus rdf:type owl:DatatypeProperty ; rdfs:domain cto:TestTask ; rdfs:range xsd:string .
 cto:itemCode rdf:type owl:DatatypeProperty ; rdfs:domain cto:TestItem ; rdfs:range xsd:string .
 cto:itemName rdf:type owl:DatatypeProperty ; rdfs:domain cto:TestItem ; rdfs:range xsd:string .
+cto:recordItemCode rdf:type owl:DatatypeProperty ; rdfs:domain cto:TestDataRecord ; rdfs:range xsd:string .
 cto:measuredValue rdf:type owl:DatatypeProperty ; rdfs:domain cto:TestDataRecord ; rdfs:range xsd:decimal .
 cto:unit rdf:type owl:DatatypeProperty ; rdfs:range xsd:string .
 cto:operator rdf:type owl:DatatypeProperty ; rdfs:domain cto:PassCriterion ; rdfs:range xsd:string .
@@ -54,7 +56,11 @@ cto:standardVersion rdf:type owl:DatatypeProperty ; rdfs:domain cto:StandardVers
 cto:effectiveFrom rdf:type owl:DatatypeProperty ; rdfs:domain cto:StandardVersion ; rdfs:range xsd:dateTime .
 cto:resultStatus rdf:type owl:DatatypeProperty ; rdfs:domain cto:JudgementResult ; rdfs:range xsd:string .
 cto:resultReason rdf:type owl:DatatypeProperty ; rdfs:domain cto:JudgementResult ; rdfs:range xsd:string .
+cto:resultStandardCode rdf:type owl:DatatypeProperty ; rdfs:domain cto:JudgementResult ; rdfs:range xsd:string .
+cto:resultStandardVersion rdf:type owl:DatatypeProperty ; rdfs:domain cto:JudgementResult ; rdfs:range xsd:string .
 cto:judgedAt rdf:type owl:DatatypeProperty ; rdfs:domain cto:JudgementResult ; rdfs:range xsd:dateTime .
+cto:impactItemCode rdf:type owl:DatatypeProperty ; rdfs:domain cto:ReevaluationImpact ; rdfs:range xsd:string .
+cto:impactTaskStatus rdf:type owl:DatatypeProperty ; rdfs:domain cto:ReevaluationImpact ; rdfs:range xsd:string .
 cto:flipped rdf:type owl:DatatypeProperty ; rdfs:domain cto:ReevaluationImpact ; rdfs:range xsd:boolean .
 cto:draftStatus rdf:type owl:DatatypeProperty ; rdfs:domain cto:CQDraft ; rdfs:range xsd:string .
 cto:draftPayload rdf:type owl:DatatypeProperty ; rdfs:domain cto:CQDraft ; rdfs:range xsd:string .

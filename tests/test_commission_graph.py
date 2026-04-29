@@ -1,7 +1,11 @@
 import json
 from copy import deepcopy
 
+from rdflib import Graph
+from rdflib.namespace import RDF, RDFS
+
 from mvp.core import commission_graph as cg
+from mvp.core import cq_engine, ontology_draft
 from mvp.core.graph import BusinessGraphRepository
 
 
@@ -127,6 +131,7 @@ def test_standard_upgrade_preserves_old_results_and_records_flip():
     assert task_001["impacts"] == [
         {
             "impact_id": "DR-T-001-RCS_MEAN_Impact_V1_to_V2",
+            "task_id": "T-001",
             "data_record_id": "DR-T-001-RCS_MEAN",
             "item_code": "RCS_MEAN",
             "old_status": "Pass",
@@ -149,6 +154,7 @@ def test_standard_upgrade_preserves_old_results_and_records_flip():
             {"task_id": "T-002", "project_id": "P-002", "name": task_002["project_name"], "status": "Completed"},
         ],
     }
+    assert service.latest_impact() == impact
 
 
 def test_multi_item_task_persists_all_items_and_keeps_flipped_task_needs_review(tmp_path, monkeypatch):
@@ -226,3 +232,56 @@ def test_multi_item_task_persists_all_items_and_keeps_flipped_task_needs_review(
             {"task_id": "T-001", "project_id": "P-001", "name": task["project_name"], "status": "NeedsReview"},
         ],
     }
+
+
+def test_reset_demo_preserves_cq_drafts_in_shared_data_graph():
+    repo = BusinessGraphRepository()
+    graph_service = cg.CommissionGraphService(repository=repo)
+    draft_service = cq_engine.CQDraftService(repository=repo)
+    graph_service.reset_demo()
+    payload = ontology_draft.generate_commission_draft(
+        business_text="Commission projects become tasks and standards trigger historical rejudgement.",
+        generation_mode="template_only",
+    )
+    saved = draft_service.save_draft(payload)
+
+    graph_service.reset_demo()
+
+    drafts = draft_service.list_drafts()
+    assert drafts == {
+        "items": [
+            {
+                "draft_id": saved["draft_id"],
+                "draft_status": "draft",
+                "payload": payload,
+            }
+        ],
+        "total": 1,
+    }
+    assert graph_service.get_order("CO-2024-001")["order_no"] == "CO-2024-001"
+    assert graph_service.latest_impact() == {"changed": []}
+
+
+def test_commission_ontology_domains_match_written_abox_usage():
+    repo = BusinessGraphRepository()
+    service = cg.CommissionGraphService(repository=repo)
+    service.reset_demo()
+    service.upgrade_standard_to_demo_v2()
+    data_graph = repo.graph(cg.ONTOLOGY_ID, "data")
+    ontology_graph = Graph().parse("mvp/ontology/commission-testing.ttl", format="turtle")
+
+    inferred_types = set(data_graph.triples((None, RDF.type, None)))
+    for subject, predicate, _obj in data_graph:
+        for _domain_subject, _domain_predicate, domain in ontology_graph.triples((predicate, RDFS.domain, None)):
+            inferred_types.add((subject, RDF.type, domain))
+
+    task_node = cg._node("task", "T-001")
+    record_node = cg._node("record", "DR-T-001-RCS_MEAN")
+    result_node = cg._node("result", "DR-T-001-RCS_MEAN_Result_1")
+    impact_node = cg._node("impact", "DR-T-001-RCS_MEAN_Impact_V1_to_V2")
+
+    assert (task_node, RDF.type, cg.CTO.TestProject) not in inferred_types
+    assert (record_node, RDF.type, cg.CTO.TestItem) not in inferred_types
+    assert (result_node, RDF.type, cg.CTO.StandardVersion) not in inferred_types
+    assert (impact_node, RDF.type, cg.CTO.TestTask) not in inferred_types
+    assert (impact_node, RDF.type, cg.CTO.TestItem) not in inferred_types

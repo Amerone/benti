@@ -11,7 +11,7 @@ from typing import Any
 from rdflib import Literal, URIRef
 from rdflib.namespace import RDF
 
-from mvp.core import commission_graph
+from mvp.core import commission_graph, graph
 from mvp.core.graph import BusinessGraphRepository
 
 
@@ -23,6 +23,12 @@ class CommissionCQ:
     sparql: str
     expected: dict[str, str]
     evidence_fields: list[str]
+
+
+@dataclass(frozen=True)
+class CommissionCQRunResult:
+    question: CommissionCQ
+    rows: list[dict[str, Any]]
 
 
 class CQEngineError(ValueError):
@@ -171,6 +177,30 @@ class CQDraftService:
         self.repository._sync_graph_to_remote(self.ontology_id, "data")
 
 
+class CommissionCQRunner:
+    def __init__(
+        self,
+        *,
+        repository: BusinessGraphRepository,
+        ontology_id: str = "commission-testing",
+    ) -> None:
+        self.repository = repository
+        self.ontology_id = ontology_id
+
+    def run_question(self, question: CommissionCQ) -> CommissionCQRunResult:
+        rows = self._select_rows(render_commission_sparql(question, self.ontology_id))
+        validate_commission_expected(question, rows)
+        return CommissionCQRunResult(question=question, rows=rows)
+
+    def _select_rows(self, sparql: str) -> list[dict[str, Any]]:
+        if self.repository.client is None:
+            raise RuntimeError("CommissionCQRunner requires a repository with a Fuseki client")
+        return [
+            {str(key): normalize_sparql_value(value) for key, value in row.items()}
+            for row in self.repository.client.select(sparql)
+        ]
+
+
 def _parse_metadata(cq_id: str, body: str) -> dict[str, str]:
     metadata_text = SPARQL_RE.sub("", body)
     metadata: dict[str, str] = {}
@@ -207,6 +237,32 @@ def _parse_expected(cq_id: str, raw: str) -> dict[str, str]:
 
 def _parse_csv_field(raw: str) -> list[str]:
     return [item.strip() for item in raw.split(",") if item.strip()]
+
+
+def render_commission_sparql(question: CommissionCQ | str, ontology_id: str) -> str:
+    sparql = question.sparql if isinstance(question, CommissionCQ) else str(question)
+    return sparql.replace("{{data_graph_iri}}", graph.graph_iri(ontology_id, "data"))
+
+
+def normalize_sparql_value(value: Any) -> Any:
+    if isinstance(value, dict) and "value" in value:
+        return value["value"]
+    return value
+
+
+def validate_commission_expected(question: CommissionCQ, rows: list[dict[str, Any]]) -> None:
+    expected_count = int(question.expected["row_count"])
+    if len(rows) != expected_count:
+        raise AssertionError(f"{question.id} expected {expected_count} rows, got {len(rows)}")
+    if not rows:
+        return
+    row = rows[0]
+    for key, expected in question.expected.items():
+        if key == "row_count":
+            continue
+        actual = row.get(key)
+        if str(actual) != expected:
+            raise AssertionError(f"{question.id} expected {key}={expected}, got {actual}")
 
 
 def _serialize_payload(payload: dict[str, Any]) -> str:

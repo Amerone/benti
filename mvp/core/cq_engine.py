@@ -181,11 +181,14 @@ class CQDraftService:
         except json.JSONDecodeError as exc:
             draft_id = _literal_text(data_graph, draft_node, commission_graph.CTO.localId)
             raise CQEngineError(f"stored draft payload is invalid JSON: {draft_id}") from exc
-        return {
+        draft = {
             "draft_id": _literal_text(data_graph, draft_node, commission_graph.CTO.localId),
             "draft_status": _literal_text(data_graph, draft_node, commission_graph.CTO.draftStatus),
             "payload": payload,
         }
+        if draft["draft_status"] == "published":
+            draft["exports"] = self._export_payload(payload)
+        return draft
 
     def _export_payload(self, payload: dict[str, Any]) -> dict[str, Any]:
         return {

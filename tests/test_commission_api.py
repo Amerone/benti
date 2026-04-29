@@ -477,3 +477,5 @@ def test_cq_engine_publish_requires_reviewed_and_returns_export_artifacts():
 
         listing = client.get("/api/v1/cq-engine/drafts").json()["data"]["items"]
         assert listing[0]["draft_status"] == "published"
+        assert listing[0]["exports"]["draft_turtle"].startswith("# ontology-id: commission-testing")
+        assert listing[0]["exports"]["draft_sparql_tests"] == ["CQ-CT-001", "CQ-CT-004"]

@@ -13,6 +13,8 @@ import ast
 from pathlib import Path
 import re
 
+import pytest
+
 
 FRONTEND_FILES = [
     Path("mvp/frontend/ui_utils.py"),
@@ -174,7 +176,7 @@ def test_commission_frontend_tabs_do_not_import_core_modules() -> None:
     commission_text = COMMISSION_TAB_FILES[0].read_text(encoding="utf-8")
     cq_text = COMMISSION_TAB_FILES[1].read_text(encoding="utf-8")
     assert '"/commission/demo/reset"' in commission_text
-    assert '"/commission/orders/CO-2024-001"' in commission_text
+    assert 'f"/commission/orders/{order_no}"' in commission_text
     assert '"/commission/impacts/latest"' in commission_text
     assert "/commission/standards/" in commission_text
     assert "/upgrade" in commission_text
@@ -185,6 +187,116 @@ def test_commission_frontend_tabs_do_not_import_core_modules() -> None:
     assert '"draft_status": "reviewed"' in cq_text
     assert "draft_status" in cq_text
     assert "reviewed" in cq_text
+
+
+def test_commission_page_exposes_generic_order_and_data_record_forms() -> None:
+    """Commission page should expose productized API entry points, not only the fixed demo script."""
+
+    from mvp.frontend.tabs import tab_commission_customer
+
+    text = Path("mvp/frontend/tabs/tab_commission_customer.py").read_text(encoding="utf-8")
+    assert 'st.form("commission-order-form")' in text
+    assert 'st.form("commission-data-record-form")' in text
+    assert '"/commission/orders"' in text
+    assert '"/commission/data-records"' in text
+    assert re.search(r'api_request\(\s*"POST",\s*"/commission/orders"', text)
+    assert re.search(r'api_request\(\s*"POST",\s*"/commission/data-records"', text)
+
+    payload = tab_commission_customer.build_commission_order_payload(
+        order_no="CO-UI-001",
+        requester="QA",
+        product_name="Radar seeker",
+        product_model="X-UI",
+        project_id="P-UI-001",
+        project_name="Thermal vibration",
+        task_id="T-UI-001",
+        item_code="RCS_MEAN",
+        item_name="RCS mean",
+        unit="m\u00b2",
+    )
+    assert payload == {
+        "order_no": "CO-UI-001",
+        "requester": "QA",
+        "product": {"name": "Radar seeker", "model": "X-UI"},
+        "projects": [
+            {
+                "project_id": "P-UI-001",
+                "name": "Thermal vibration",
+                "task_id": "T-UI-001",
+                "items": [
+                    {
+                        "item_code": "RCS_MEAN",
+                        "item_name": "RCS mean",
+                        "unit": "m\u00b2",
+                    }
+                ],
+            }
+        ],
+    }
+    multi_payload = tab_commission_customer.build_commission_order_payload_from_rows(
+        order_no="CO-UI-002",
+        requester="QA",
+        product_name="Radar seeker",
+        product_model="X-UI",
+        rows=[
+            {
+                "project_id": "P-UI-001",
+                "project_name": "Thermal vibration",
+                "task_id": "T-UI-001",
+                "item_code": "RCS_MEAN",
+                "item_name": "RCS mean",
+                "unit": "m\u00b2",
+            },
+            {
+                "project_id": "P-UI-002",
+                "project_name": "EMC",
+                "task_id": "T-UI-002",
+                "item_code": "BER",
+                "item_name": "Bit error rate",
+                "unit": "",
+            },
+        ],
+    )
+    assert [project["project_id"] for project in multi_payload["projects"]] == ["P-UI-001", "P-UI-002"]
+    assert [project["items"][0]["item_code"] for project in multi_payload["projects"]] == ["RCS_MEAN", "BER"]
+
+    with pytest.raises(ValueError, match="project_id P-UI-001 uses multiple task_id values"):
+        tab_commission_customer.build_commission_order_payload_from_rows(
+            order_no="CO-UI-003",
+            requester="QA",
+            product_name="Radar seeker",
+            product_model="X-UI",
+            rows=[
+                {
+                    "project_id": "P-UI-001",
+                    "project_name": "Thermal vibration",
+                    "task_id": "T-UI-001",
+                    "item_code": "RCS_MEAN",
+                    "item_name": "RCS mean",
+                    "unit": "m\u00b2",
+                },
+                {
+                    "project_id": "P-UI-001",
+                    "project_name": "Thermal vibration",
+                    "task_id": "T-UI-002",
+                    "item_code": "BER",
+                    "item_name": "Bit error rate",
+                    "unit": "",
+                },
+            ],
+        )
+
+
+def test_cq_page_exposes_reviewed_draft_publish_action() -> None:
+    """CQ page should let reviewed drafts use the publish/export API from the UI."""
+
+    text = Path("mvp/frontend/tabs/tab_cq_engine.py").read_text(encoding="utf-8")
+    assert '"/cq-engine/drafts/{selected_draft_id}/publish"' in text
+    assert 'api_request("POST", f"/cq-engine/drafts/{selected_draft_id}/publish"' in text
+    assert "exports" in text
+    assert "draft_turtle" in text
+    assert "candidate_rules" in text
+    assert "draft_sparql_tests" in text
 
 
 def test_measure_tab_exposes_compare_mode_and_reasoner_badges() -> None:

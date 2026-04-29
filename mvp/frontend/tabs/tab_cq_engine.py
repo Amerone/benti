@@ -90,7 +90,8 @@ def render() -> None:
         render_trace(TRACE_KEY)
         return
 
-    review_col, status_col = st.columns([1, 2])
+    published_draft: dict[str, Any] | None = None
+    review_col, publish_col, status_col = st.columns([1, 1, 2])
     with review_col:
         if selected_draft.get("draft_status") != "reviewed" and st.button("标记为 reviewed", width="stretch"):
             envelope = api_request(
@@ -103,6 +104,14 @@ def render() -> None:
             render_envelope_feedback(envelope, success_message="草案已标记为 reviewed。")
             if envelope.get("ok"):
                 st.rerun()
+    with publish_col:
+        can_publish = selected_draft.get("draft_status") == "reviewed"
+        if can_publish and st.button("发布草案", width="stretch"):
+            envelope = api_request("POST", f"/cq-engine/drafts/{selected_draft_id}/publish", trace_key=TRACE_KEY, trace_title="CQ 草案发布")
+            render_envelope_feedback(envelope, success_message="草案已发布，导出包已生成。")
+            if envelope.get("ok"):
+                published_draft = extract_data(envelope, default={}) or {}
+                selected_draft = published_draft
     with status_col:
         st.caption(
             f"当前草案：{selected_draft.get('draft_id', '-')} | 状态：{selected_draft.get('draft_status', '-')} | "
@@ -111,6 +120,7 @@ def render() -> None:
 
     payload = selected_draft.get("payload") or {}
     _render_payload(payload)
+    _render_exports((published_draft or selected_draft).get("exports") or {})
 
     st.markdown("**草案 JSON**")
     st.code(json.dumps(payload, ensure_ascii=False, indent=2), language="json")
@@ -167,3 +177,20 @@ def _render_payload(payload: dict[str, Any]) -> None:
 
     st.markdown("**来源链路**")
     render_dataframe(trace_rows, empty_text="暂无来源链路。")
+
+
+def _render_exports(exports: dict[str, Any]) -> None:
+    if not exports:
+        return
+
+    st.markdown("**发布导出包**")
+    export_cols = st.columns(2)
+    with export_cols[0]:
+        st.caption(f"ontology_id: {exports.get('ontology_id', '-')}")
+        st.code(str(exports.get("draft_turtle") or ""), language="text")
+    with export_cols[1]:
+        render_dataframe(list(exports.get("candidate_rules") or []), empty_text="暂无导出规则。")
+        render_dataframe(
+            [{"测试ID": item} for item in list(exports.get("draft_sparql_tests") or [])],
+            empty_text="暂无导出 SPARQL 测试。",
+        )

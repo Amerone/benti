@@ -1676,7 +1676,7 @@ Non-git checkpoint: list changed files and verification output.
 - Create: `tests/test_commission_cq_integration.py`
 - Modify: `mvp/core/cq_engine.py`
 
-- [ ] **Step 1: Write integration test**
+- [x] **Step 1: Write integration test**
 
 Create `tests/test_commission_cq_integration.py`:
 
@@ -1724,7 +1724,7 @@ def test_commission_cqs_execute_against_fuseki():
     assert results[3].rows[0]["task_status"] == "NeedsReview"
 ```
 
-- [ ] **Step 2: Run integration test to verify failure**
+- [x] **Step 2: Run integration test to verify failure**
 
 Run:
 
@@ -1734,7 +1734,7 @@ python -m pytest tests/test_commission_cq_integration.py -q -rs
 
 Expected: FAIL when Fuseki is available because `CommissionCQRunner` is missing, or SKIP if Fuseki is unavailable.
 
-- [ ] **Step 3: Add runner to `cq_engine.py`**
+- [x] **Step 3: Add runner to `cq_engine.py`**
 
 Add:
 
@@ -1793,7 +1793,7 @@ def validate_commission_expected(question: CommissionCQ, rows: list[dict[str, An
             raise AssertionError(f"{question.id} expected {key}={expected}, got {actual}")
 ```
 
-- [ ] **Step 4: Run integration test**
+- [x] **Step 4: Run integration test**
 
 Run:
 
@@ -1803,7 +1803,7 @@ python -m pytest tests/test_commission_cq_integration.py -q -rs
 
 Expected with Fuseki available: PASS. Expected without Fuseki: SKIP with unavailable message.
 
-- [ ] **Step 5: Commit or checkpoint**
+- [x] **Step 5: Commit or checkpoint**
 
 Real git:
 
@@ -1830,7 +1830,7 @@ Non-git checkpoint: list files and PASS/SKIP output.
 - Modify: `docs/系统演示操作手册.md`
 - Modify: `README.md`
 
-- [ ] **Step 1: Update README CQ section**
+- [x] **Step 1: Update README CQ section**
 
 Add this section after the existing CQ validation section in `README.md`:
 
@@ -1869,7 +1869,7 @@ python -m pytest tests/test_commission_cq_integration.py -q -rs
 如果 Fuseki 未启动，集成测试会 skip；发布演示前应在可写 Fuseki 环境跑通一次。
 ```
 
-- [ ] **Step 2: Update demo manual**
+- [x] **Step 2: Update demo manual**
 
 Add a new section to `docs/系统演示操作手册.md` after the five-minute script:
 
@@ -1912,7 +1912,7 @@ python -m pytest tests/test_commission_cq_integration.py -q -rs
 - CQ SPARQL 是自动回归资产，不是普通问答样例。
 ```
 
-- [ ] **Step 3: Run doc-adjacent checks**
+- [x] **Step 3: Run doc-adjacent checks**
 
 Run:
 
@@ -1922,7 +1922,7 @@ python -m pytest tests/test_commission_reasoning.py tests/test_commission_graph.
 
 Expected: all selected tests PASS.
 
-- [ ] **Step 4: Commit or checkpoint**
+- [x] **Step 4: Commit or checkpoint**
 
 Real git:
 
@@ -1949,7 +1949,7 @@ Non-git checkpoint: list files and verification output.
 - No new files.
 - Verify all files changed in Tasks 1-8.
 
-- [ ] **Step 1: Run offline focused tests**
+- [x] **Step 1: Run offline focused tests**
 
 Run:
 
@@ -1959,7 +1959,7 @@ python -m pytest tests/test_commission_reasoning.py tests/test_commission_graph.
 
 Expected: PASS.
 
-- [ ] **Step 2: Run compile check**
+- [x] **Step 2: Run compile check**
 
 Run:
 
@@ -1969,7 +1969,7 @@ python -m compileall mvp tests
 
 Expected: compile completes with no syntax errors.
 
-- [ ] **Step 3: Run optional Fuseki integration**
+- [x] **Step 3: Run optional Fuseki integration**
 
 Run when Fuseki is available:
 
@@ -1980,7 +1980,7 @@ python -m pytest tests/test_commission_cq_integration.py -q -rs
 
 Expected: PASS when Fuseki is reachable and writable. If it skips because Fuseki is unavailable, record the skip reason and run it before customer demo.
 
-- [ ] **Step 4: Manual API smoke**
+- [x] **Step 4: Manual API smoke**
 
 Start API:
 
@@ -1998,7 +1998,7 @@ Invoke-RestMethod http://127.0.0.1:8000/api/v1/commission/impacts/latest
 
 Expected: latest impact includes `T-001`, `old_status=Pass`, `new_status=Fail`, `task_status=NeedsReview`.
 
-- [ ] **Step 5: Manual Streamlit smoke**
+- [x] **Step 5: Manual Streamlit smoke**
 
 Start frontend:
 
@@ -2014,7 +2014,7 @@ Expected:
 - Standard upgrade shows `T-001` flip.
 - `技术讲 -> CQ 工程台` with `template_only` creates and displays a draft.
 
-- [ ] **Step 6: Final commit or checkpoint**
+- [x] **Step 6: Final commit or checkpoint**
 
 Real git:
 
@@ -2034,6 +2034,16 @@ Not-tested: Fuseki integration if local Fuseki was unavailable"
 ```
 
 Non-git checkpoint: record exact command outputs and any skipped Fuseki integration.
+
+Verification notes, 2026-04-29:
+
+- `python -m pytest tests/test_commission_cq_integration.py -q -rs`: `1 passed`.
+- `python -m pytest tests/test_commission_reasoning.py tests/test_commission_graph.py tests/test_commission_cq_engine.py tests/test_commission_api.py -q`: `36 passed`.
+- `python -m pytest tests/test_commission_reasoning.py tests/test_commission_graph.py tests/test_commission_cq_engine.py tests/test_commission_api.py tests/test_frontend_boundaries.py tests/test_ontology_registry.py -q`: `69 passed`.
+- `python -m compileall mvp tests`: completed with no syntax errors.
+- `docker compose up -d`: remote image pull for `apache/jena-fuseki:5.1.0` failed, but the already running local Fuseki was reachable and the commission CQ integration test passed against it.
+- Manual API smoke on fresh port `8020`: `/commission/demo/reset`, `/commission/standards/GJB-7821-2024/upgrade`, and `/commission/impacts/latest` returned `T-001`, `Pass -> Fail`, `NeedsReview`.
+- Manual Streamlit smoke via `streamlit.testing.v1.AppTest` against API `8010`: clicked reset, standard upgrade, selected `template_only`, generated/saved draft, and verified `impact_count=2`, `draft_count=3`.
 
 ## Self-Review
 

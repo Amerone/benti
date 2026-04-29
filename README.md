@@ -163,6 +163,39 @@ python -m pytest tests/test_cq_integration.py -q
 慢速本地 Fuseki 可以通过 `FUSEKI_TEST_TIMEOUT` 调大集成测试 HTTP 超时时间，默认 15 秒。
 当该测试被跳过时，只代表本地缺少外部依赖，不代表真实 Fuseki/SPARQL 链路已经通过；发布前应在具备写凭据的环境中运行一次。
 
+## 委托单试验 CQ 工程
+
+`commission-testing` 是独立于 `manufacturing-trial` 的新本体，用于演示从委托单业务流程出发，借助 CQ 反推候选 TBox/RBox、规则和 SPARQL 验收。
+
+第一版演示链：
+
+```text
+CO-2024-001
+  -> 试验项目 P-001/P-002
+  -> 任务 T-001/T-002
+  -> RCS/误码率实测值
+  -> V1 判定
+  -> V2 标准升级
+  -> 历史数据重判
+  -> T-001 标记 NeedsReview
+```
+
+关键文件：
+
+- `mvp/ontology/commission-testing.ttl`
+- `docs/cq/commission-testing-cqs.md`
+- `mvp/rules/commission-testing.yml`
+- `mvp/data/commission-testing-demo.json`
+
+验证命令：
+
+```powershell
+python -m pytest tests/test_commission_reasoning.py tests/test_commission_graph.py tests/test_commission_cq_engine.py tests/test_commission_api.py -q
+python -m pytest tests/test_commission_cq_integration.py -q -rs
+```
+
+如果 Fuseki 未启动，集成测试会 skip；发布演示前应在可写 Fuseki 环境跑通一次。
+
 ## 运行时说明
 
 - 本项目的确定性业务判定不依赖 Pellet。Pellet 不可用时，测量判定与问答 fallback 仍可工作。

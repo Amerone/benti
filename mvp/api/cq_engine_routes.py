@@ -67,6 +67,14 @@ def create_router() -> APIRouter:
             raise _cq_engine_domain_error(exc) from exc
         return envelope.ok(result, trace=request.state.trace)
 
+    @router.post("/drafts/{draft_id}/publish")
+    async def publish_draft(draft_id: str, request: Request):
+        try:
+            result = await run_in_threadpool(request.app.state.cq_draft_service.publish_draft, draft_id)
+        except CQEngineError as exc:
+            raise _cq_engine_domain_error(exc) from exc
+        return envelope.ok(result, trace=request.state.trace)
+
     return router
 
 

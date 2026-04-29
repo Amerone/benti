@@ -140,6 +140,20 @@ class CQDraftService:
         self._sync()
         return self._serialize_draft(data_graph, draft_node)
 
+    def publish_draft(self, draft_id: str) -> dict[str, Any]:
+        data_graph = self.repository.graph(self.ontology_id, "data")
+        draft_node = self._find_draft_node(data_graph, draft_id)
+        if draft_node is None:
+            raise CQEngineError(f"draft not found: {draft_id}")
+        draft = self._serialize_draft(data_graph, draft_node)
+        if draft["draft_status"] != "reviewed":
+            raise CQEngineError("draft must be reviewed before publish")
+        data_graph.set((draft_node, commission_graph.CTO.draftStatus, Literal("published")))
+        self._sync()
+        published = self._serialize_draft(data_graph, draft_node)
+        published["exports"] = self._export_payload(published["payload"])
+        return published
+
     def _draft_nodes(self, data_graph) -> list[URIRef]:
         nodes = [node for node in data_graph.subjects(RDF.type, commission_graph.CTO.CQDraft) if isinstance(node, URIRef)]
         return sorted(nodes, key=lambda node: _literal_text(data_graph, node, commission_graph.CTO.localId))
@@ -171,6 +185,15 @@ class CQDraftService:
             "draft_id": _literal_text(data_graph, draft_node, commission_graph.CTO.localId),
             "draft_status": _literal_text(data_graph, draft_node, commission_graph.CTO.draftStatus),
             "payload": payload,
+        }
+
+    def _export_payload(self, payload: dict[str, Any]) -> dict[str, Any]:
+        return {
+            "ontology_id": self.ontology_id,
+            "draft_turtle": str(payload.get("draft_turtle") or ""),
+            "candidate_cqs": list(payload.get("candidate_cqs") or []),
+            "candidate_rules": list(payload.get("candidate_rules") or []),
+            "draft_sparql_tests": list(payload.get("draft_sparql_tests") or []),
         }
 
     def _sync(self) -> None:

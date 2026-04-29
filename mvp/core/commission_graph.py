@@ -84,6 +84,101 @@ class CommissionGraphService:
     def __init__(self, repository: BusinessGraphRepository | None = None) -> None:
         self.repository = repository or BusinessGraphRepository()
 
+    def upsert_order(self, order: dict[str, Any]) -> dict[str, Any]:
+        self.repository.load_ontologies(reload=False)
+        data_graph = self.repository.graph(ONTOLOGY_ID, "data")
+        self._validate_order_payload(order)
+        self._reject_cross_order_resource_conflicts(data_graph, order)
+        self._remove_order_resources(data_graph, order["order_no"])
+
+        old_standard = self._load_demo()["standards"]["old"]
+        self._write_standard(data_graph, old_standard)
+        order_node = self._write_order(data_graph, order)
+        tasks = reasoning.decompose_projects(
+            [
+                reasoning.TestProjectInput(
+                    project_id=project["project_id"],
+                    name=project["name"],
+                    task_id=project["task_id"],
+                )
+                for project in order["projects"]
+            ]
+        )
+        task_by_project = {task.project_id: task for task in tasks}
+        item_count = 0
+        for project in order["projects"]:
+            task = task_by_project[project["project_id"]]
+            project_node = self._write_project(data_graph, order_node, project)
+            task_node = self._write_task(data_graph, project_node, task.task_id, task.name, "Pending")
+            for item in project.get("items", []):
+                self._write_item(data_graph, task_node, task.task_id, item)
+                item_count += 1
+
+        self._sync()
+        return {
+            "ontology_id": ONTOLOGY_ID,
+            "order_no": order["order_no"],
+            "task_count": len(tasks),
+            "item_count": item_count,
+            "record_count": 0,
+            "result_count": 0,
+        }
+
+    def add_data_record(self, payload: dict[str, Any]) -> dict[str, Any]:
+        data_graph = self.repository.graph(ONTOLOGY_ID, "data")
+        task_id = str(payload["task_id"])
+        item_code = str(payload["item_code"])
+        task_node = self._find_by_literal(data_graph, CTO.localId, task_id, rdf_type=CTO.TestTask)
+        if task_node is None:
+            raise ValueError(f"task not found: {task_id}")
+        item_node = self._find_item_for_task(data_graph, task_node, item_code)
+        if item_node is None:
+            raise ValueError(f"item not found for task {task_id}: {item_code}")
+
+        standard_node = self._latest_standard_node(data_graph)
+        if standard_node is None:
+            self._write_standard(data_graph, self._load_demo()["standards"]["old"])
+            standard_node = self._latest_standard_node(data_graph)
+        criteria = self._criteria_for_standard(data_graph, standard_node)
+        if item_code not in criteria:
+            raise ValueError(f"criterion not found for item: {item_code}")
+
+        record_id = str(payload.get("data_record_id") or f"DR-{task_id}-{item_code}")
+        record_payload = {
+            "item_code": item_code,
+            "value": payload["value"],
+            "unit": payload.get("unit", _text(data_graph, item_node, CTO.unit)),
+        }
+        result = reasoning.evaluate_record(
+            record_id,
+            task_id,
+            item_code,
+            float(payload["value"]),
+            criteria[item_code],
+            measured_unit=record_payload.get("unit"),
+            result_no=1,
+        )
+
+        old_record_node = _object(data_graph, item_node, CTO.recordsData)
+        if old_record_node is not None:
+            nodes_to_remove = [old_record_node, *self._result_nodes_for_record(data_graph, old_record_node)]
+            self._remove_nodes(data_graph, nodes_to_remove)
+
+        record_node = self._write_record(data_graph, item_node, record_id, record_payload)
+        result_node = self._write_result(data_graph, record_node, result, item_code)
+        task_status = self._derive_task_status(data_graph, task_node)
+        self._set_task_status(data_graph, task_node, task_status)
+        self._sync()
+        return {
+            "task_id": task_id,
+            "item_code": item_code,
+            "data_record_id": record_id,
+            "value": float(payload["value"]),
+            "unit": record_payload.get("unit", ""),
+            "result": self._serialize_result(data_graph, result_node),
+            "task_status": task_status,
+        }
+
     def reset_demo(self) -> dict[str, Any]:
         self.repository.load_ontologies(reload=False)
         data_graph = self.repository.graph(ONTOLOGY_ID, "data")
@@ -221,7 +316,7 @@ class CommissionGraphService:
         for task_node in self._task_nodes(data_graph):
             task_id = _text(data_graph, task_node, CTO.localId)
             task_changed: list[tuple[URIRef, dict[str, Any]]] = []
-            task_status = "Completed"
+            has_flip = False
             for item_node in self._item_nodes_for_task(data_graph, task_node):
                 record_node = _object(data_graph, item_node, CTO.recordsData)
                 if record_node is None:
@@ -253,7 +348,7 @@ class CommissionGraphService:
                 impact = reasoning.compare_results(old_result, new_result)
                 impact_node = self._write_impact(data_graph, task_node, item_code, impact)
                 if impact.flipped:
-                    task_status = "NeedsReview"
+                    has_flip = True
                 task_changed.append(
                     (
                         impact_node,
@@ -271,6 +366,8 @@ class CommissionGraphService:
                     )
                 )
 
+            completion_status = self._derive_task_status(data_graph, task_node)
+            task_status = completion_status if completion_status != "Completed" else ("NeedsReview" if has_flip else "Completed")
             self._set_task_status(data_graph, task_node, task_status)
             for impact_node, task_change in task_changed:
                 self._set_impact_task_status(data_graph, impact_node, task_status)
@@ -365,6 +462,30 @@ class CommissionGraphService:
             data_graph.set((criterion_node, CTO.criterionInStandard, standard_node))
         return standard_node
 
+    def _criteria_for_standard(
+        self,
+        data_graph: Graph,
+        standard_node: URIRef | None,
+    ) -> dict[str, reasoning.PassCriterionInput]:
+        if standard_node is None:
+            return {}
+        standard_code = _text(data_graph, standard_node, CTO.standardCode)
+        standard_version = _text(data_graph, standard_node, CTO.standardVersion)
+        criteria: dict[str, reasoning.PassCriterionInput] = {}
+        for criterion_node in data_graph.subjects(CTO.criterionInStandard, standard_node):
+            if not isinstance(criterion_node, URIRef):
+                continue
+            item_code = _text(data_graph, criterion_node, CTO.itemCode)
+            criteria[item_code] = reasoning.PassCriterionInput(
+                item_code=item_code,
+                operator=_text(data_graph, criterion_node, CTO.operator),
+                threshold=_number(data_graph, criterion_node, CTO.threshold),
+                unit=_text(data_graph, criterion_node, CTO.unit),
+                standard_code=standard_code,
+                standard_version=standard_version,
+            )
+        return criteria
+
     def _write_result(
         self,
         data_graph: Graph,
@@ -428,6 +549,24 @@ class CommissionGraphService:
     def _item_nodes_for_task(self, data_graph: Graph, task_node: URIRef) -> list[URIRef]:
         nodes = [node for node in data_graph.objects(task_node, CTO.hasTestItem) if isinstance(node, URIRef)]
         return sorted(nodes, key=lambda node: _text(data_graph, node, CTO.itemCode))
+
+    def _find_item_for_task(self, data_graph: Graph, task_node: URIRef, item_code: str) -> URIRef | None:
+        for item_node in self._item_nodes_for_task(data_graph, task_node):
+            if _text(data_graph, item_node, CTO.itemCode) == item_code:
+                return item_node
+        return None
+
+    def _derive_task_status(self, data_graph: Graph, task_node: URIRef) -> str:
+        item_nodes = self._item_nodes_for_task(data_graph, task_node)
+        if not item_nodes:
+            return "Pending"
+        for item_node in item_nodes:
+            record_node = _object(data_graph, item_node, CTO.recordsData)
+            if record_node is None:
+                return "Pending"
+            if self._latest_result_node(data_graph, self._result_nodes_for_record(data_graph, record_node)) is None:
+                return "Pending"
+        return "Completed"
 
     def _impact_nodes_for_task(self, data_graph: Graph, task_node: URIRef) -> list[URIRef]:
         nodes = [node for node in data_graph.subjects(CTO.impactsTask, task_node) if isinstance(node, URIRef)]
@@ -498,6 +637,15 @@ class CommissionGraphService:
 
     def _serialize_order_item(self, data_graph: Graph, item_node: URIRef) -> dict[str, Any]:
         record_node = _object(data_graph, item_node, CTO.recordsData)
+        if record_node is None:
+            return {
+                "item_code": _text(data_graph, item_node, CTO.itemCode),
+                "item_name": _text(data_graph, item_node, CTO.itemName),
+                "unit": _text(data_graph, item_node, CTO.unit),
+                "value": None,
+                "data_record_id": "",
+                "current_result": None,
+            }
         current_result_node = self._latest_result_node(data_graph, self._result_nodes_for_record(data_graph, record_node))
         return {
             "item_code": _text(data_graph, item_node, CTO.itemCode),
@@ -510,6 +658,16 @@ class CommissionGraphService:
 
     def _serialize_task_item(self, data_graph: Graph, item_node: URIRef) -> dict[str, Any]:
         record_node = _object(data_graph, item_node, CTO.recordsData)
+        if record_node is None:
+            return {
+                "item_code": _text(data_graph, item_node, CTO.itemCode),
+                "item_name": _text(data_graph, item_node, CTO.itemName),
+                "unit": _text(data_graph, item_node, CTO.unit),
+                "value": None,
+                "data_record_id": "",
+                "current_result": None,
+                "results": [],
+            }
         result_nodes = self._result_nodes_for_record(data_graph, record_node)
         current_result_node = self._latest_result_node(data_graph, result_nodes)
         return {
@@ -567,6 +725,20 @@ class CommissionGraphService:
                 return subject
         return None
 
+    def _nodes_by_literal(
+        self,
+        data_graph: Graph,
+        predicate: URIRef,
+        value: str,
+        *,
+        rdf_type: URIRef | None = None,
+    ) -> list[URIRef]:
+        return [
+            subject
+            for subject in data_graph.subjects(predicate, Literal(value))
+            if isinstance(subject, URIRef) and (rdf_type is None or (subject, RDF.type, rdf_type) in data_graph)
+        ]
+
     def _read_result(self, data_graph: Graph, result_node: URIRef) -> reasoning.JudgementResult:
         record_node = next(data_graph.subjects(CTO.hasJudgementResult, result_node))
         task_id = self._task_id_for_record(data_graph, record_node)
@@ -594,6 +766,93 @@ class CommissionGraphService:
 
     def _sync(self) -> None:
         self.repository._sync_graph_to_remote(ONTOLOGY_ID, "data")
+
+    def _validate_order_payload(self, order: dict[str, Any]) -> None:
+        required = ("order_no", "requester", "product", "projects")
+        for field in required:
+            if not order.get(field):
+                raise ValueError(f"order field is required: {field}")
+        product = order["product"]
+        for field in ("name", "model"):
+            if not product.get(field):
+                raise ValueError(f"product field is required: {field}")
+        project_ids: set[str] = set()
+        task_ids: set[str] = set()
+        for project in order["projects"]:
+            for field in ("project_id", "name", "task_id"):
+                if not project.get(field):
+                    raise ValueError(f"project field is required: {field}")
+            if project["project_id"] in project_ids:
+                raise ValueError(f"duplicate project id in order: {project['project_id']}")
+            project_ids.add(project["project_id"])
+            if project["task_id"] in task_ids:
+                raise ValueError(f"duplicate task id in order: {project['task_id']}")
+            task_ids.add(project["task_id"])
+            item_codes: set[str] = set()
+            for item in project.get("items", []):
+                for field in ("item_code", "item_name"):
+                    if not item.get(field):
+                        raise ValueError(f"item field is required: {field}")
+                if item["item_code"] in item_codes:
+                    raise ValueError(f"duplicate item code in task {project['task_id']}: {item['item_code']}")
+                item_codes.add(item["item_code"])
+
+    def _reject_cross_order_resource_conflicts(self, data_graph: Graph, order: dict[str, Any]) -> None:
+        order_no = str(order["order_no"])
+        for project in order["projects"]:
+            project_id = str(project["project_id"])
+            for project_node in self._nodes_by_literal(data_graph, CTO.localId, project_id, rdf_type=CTO.TestProject):
+                owner = self._order_no_for_project(data_graph, project_node)
+                if owner != order_no:
+                    raise ValueError(f"project id {project_id} already belongs to order {owner or '<unknown>'}")
+
+            task_id = str(project["task_id"])
+            for task_node in self._nodes_by_literal(data_graph, CTO.localId, task_id, rdf_type=CTO.TestTask):
+                owner = self._order_no_for_task(data_graph, task_node)
+                if owner != order_no:
+                    raise ValueError(f"task id {task_id} already belongs to order {owner or '<unknown>'}")
+
+    def _order_no_for_project(self, data_graph: Graph, project_node: URIRef) -> str:
+        order_node = next(data_graph.subjects(CTO.hasTestProject, project_node), None)
+        return _text(data_graph, order_node, CTO.orderNo) if isinstance(order_node, URIRef) else ""
+
+    def _order_no_for_task(self, data_graph: Graph, task_node: URIRef) -> str:
+        project_node = _object(data_graph, task_node, CTO.taskForProject)
+        if project_node is None:
+            return ""
+        return self._order_no_for_project(data_graph, project_node)
+
+    def _remove_order_resources(self, data_graph: Graph, order_no: str) -> None:
+        order_node = self._find_by_literal(data_graph, CTO.orderNo, order_no)
+        if order_node is None:
+            return
+        nodes: set[URIRef] = {order_node}
+        product_node = _object(data_graph, order_node, CTO.hasProduct)
+        if product_node is not None:
+            nodes.add(product_node)
+        for project_node in self._project_nodes_for_order(data_graph, order_node):
+            nodes.add(project_node)
+            task_node = _object(data_graph, project_node, CTO.decomposesToTask)
+            if task_node is None:
+                continue
+            nodes.add(task_node)
+            nodes.update(self._impact_nodes_for_task(data_graph, task_node))
+            for item_node in self._item_nodes_for_task(data_graph, task_node):
+                nodes.add(item_node)
+                record_node = _object(data_graph, item_node, CTO.recordsData)
+                if record_node is not None:
+                    nodes.add(record_node)
+                    nodes.update(self._result_nodes_for_record(data_graph, record_node))
+        self._remove_nodes(data_graph, nodes)
+
+    def _remove_nodes(self, data_graph: Graph, nodes: set[URIRef] | list[URIRef]) -> None:
+        node_set = set(nodes)
+        triples_to_remove = []
+        for subject, predicate, obj in data_graph:
+            if subject in node_set or (isinstance(obj, URIRef) and obj in node_set):
+                triples_to_remove.append((subject, predicate, obj))
+        for triple in triples_to_remove:
+            data_graph.remove(triple)
 
     def _clear_demo_resources(self, data_graph: Graph) -> None:
         demo_prefixes = tuple(f"{INDIVIDUAL_BASE}/{category}/" for category in _DEMO_RESOURCE_CATEGORIES)

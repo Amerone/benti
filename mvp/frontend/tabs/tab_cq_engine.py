@@ -101,10 +101,8 @@ def render() -> None:
                 trace_title="CQ 草案审核状态更新",
             )
             render_envelope_feedback(envelope, success_message="草案已标记为 reviewed。")
-            drafts_envelope = api_request("GET", "/cq-engine/drafts", record_trace=False)
-            drafts = extract_data(drafts_envelope, default={}) or {}
-            draft_items = list(drafts.get("items") or [])
-            selected_draft = next((item for item in draft_items if item.get("draft_id") == selected_draft_id), selected_draft)
+            if envelope.get("ok"):
+                st.rerun()
     with status_col:
         st.caption(
             f"当前草案：{selected_draft.get('draft_id', '-')} | 状态：{selected_draft.get('draft_status', '-')} | "

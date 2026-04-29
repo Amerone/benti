@@ -9,6 +9,7 @@
 
 from __future__ import annotations
 
+import ast
 from pathlib import Path
 import re
 
@@ -45,6 +46,75 @@ FORBIDDEN_CORE_NAMES = [
     "CommissionGraphService",
     "CQDraftService",
 ]
+
+APP_PATH = Path("mvp/frontend/app.py")
+
+
+def _parse_module(path: Path) -> ast.Module:
+    return ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+
+
+def _find_function(module: ast.Module, function_name: str) -> ast.FunctionDef:
+    for node in module.body:
+        if isinstance(node, ast.FunctionDef) and node.name == function_name:
+            return node
+    raise AssertionError(f"missing function: {function_name}")
+
+
+def _extract_tab_labels(function_node: ast.FunctionDef, tab_var_name: str) -> list[str]:
+    for node in function_node.body:
+        if not isinstance(node, ast.Assign):
+            continue
+        if len(node.targets) != 1 or not isinstance(node.targets[0], ast.Name):
+            continue
+        if node.targets[0].id != tab_var_name:
+            continue
+        if not isinstance(node.value, ast.Call):
+            continue
+        if not isinstance(node.value.func, ast.Attribute):
+            continue
+        if not isinstance(node.value.func.value, ast.Name) or node.value.func.value.id != "st":
+            continue
+        if node.value.func.attr != "tabs" or not node.value.args:
+            continue
+        labels_node = node.value.args[0]
+        if not isinstance(labels_node, ast.List):
+            break
+        labels: list[str] = []
+        for element in labels_node.elts:
+            if not isinstance(element, ast.Constant) or not isinstance(element.value, str):
+                raise AssertionError(f"{tab_var_name} labels must be string literals")
+            labels.append(element.value)
+        return labels
+    raise AssertionError(f"missing st.tabs assignment for {tab_var_name}")
+
+
+def _extract_tab_render_targets(function_node: ast.FunctionDef, tab_var_name: str) -> list[str]:
+    targets_by_index: dict[int, str] = {}
+    for node in function_node.body:
+        if not isinstance(node, ast.With) or len(node.items) != 1:
+            continue
+        context_expr = node.items[0].context_expr
+        if not isinstance(context_expr, ast.Subscript):
+            continue
+        if not isinstance(context_expr.value, ast.Name) or context_expr.value.id != tab_var_name:
+            continue
+        if not isinstance(context_expr.slice, ast.Constant) or not isinstance(context_expr.slice.value, int):
+            continue
+        assert len(node.body) == 1, f"{tab_var_name}[{context_expr.slice.value}] should have one render call"
+        body_stmt = node.body[0]
+        assert isinstance(body_stmt, ast.Expr) and isinstance(body_stmt.value, ast.Call), (
+            f"{tab_var_name}[{context_expr.slice.value}] should directly invoke a render call"
+        )
+        call = body_stmt.value
+        if isinstance(call.func, ast.Attribute) and isinstance(call.func.value, ast.Name):
+            target_name = call.func.value.id
+        elif isinstance(call.func, ast.Name):
+            target_name = call.func.id
+        else:
+            raise AssertionError(f"unsupported render target in {tab_var_name}[{context_expr.slice.value}]")
+        targets_by_index[context_expr.slice.value] = target_name
+    return [targets_by_index[index] for index in sorted(targets_by_index)]
 
 
 def test_required_frontend_files_exist() -> None:
@@ -94,6 +164,11 @@ def test_commission_frontend_tabs_do_not_import_core_modules() -> None:
         for name in FORBIDDEN_CORE_NAMES:
             if name in text:
                 violations.append(f"{path}: {name}")
+        assert "api_request(" in text, f"{path} must call api_request()"
+        assert not re.search(
+            r"\brequests\.(get|post|put|patch|delete|request)\s*\(",
+            text,
+        ), f"{path} must not call raw requests.* helpers directly"
     assert not violations, f"commission frontend boundary violations: {violations}"
 
     commission_text = COMMISSION_TAB_FILES[0].read_text(encoding="utf-8")
@@ -101,8 +176,15 @@ def test_commission_frontend_tabs_do_not_import_core_modules() -> None:
     assert '"/commission/demo/reset"' in commission_text
     assert '"/commission/orders/CO-2024-001"' in commission_text
     assert '"/commission/impacts/latest"' in commission_text
+    assert "/commission/standards/" in commission_text
+    assert "/upgrade" in commission_text
+    assert "GJB-7821-2024" in commission_text
     assert '"/cq-engine/generate"' in cq_text
     assert '"/cq-engine/drafts"' in cq_text
+    assert "/cq-engine/drafts/{selected_draft_id}" in cq_text
+    assert '"draft_status": "reviewed"' in cq_text
+    assert "draft_status" in cq_text
+    assert "reviewed" in cq_text
 
 
 def test_measure_tab_exposes_compare_mode_and_reasoner_badges() -> None:
@@ -245,6 +327,39 @@ def test_top_bar_selectbox_does_not_mix_index_with_bound_session_state() -> None
     ]
     assert "key=ACTIVE_ONTOLOGY_KEY" in selector_block
     assert "index=" not in selector_block
+
+
+def test_app_tab_order_and_render_wiring_are_stable() -> None:
+    """The top-level and technical tab arrays should keep their intended render order."""
+
+    module = _parse_module(APP_PATH)
+    main_function = _find_function(module, "main")
+    technical_function = _find_function(module, "_render_technical_tabs")
+
+    audience_labels = _extract_tab_labels(main_function, "audience_tabs")
+    audience_targets = _extract_tab_render_targets(main_function, "audience_tabs")
+    technical_labels = _extract_tab_labels(technical_function, "tabs")
+    technical_targets = _extract_tab_render_targets(technical_function, "tabs")
+
+    assert len(audience_labels) == 4
+    assert audience_targets == [
+        "tab_customer",
+        "tab_commission_customer",
+        "_render_technical_tabs",
+        "tab_equipment_health",
+    ]
+    assert audience_targets[1] == "tab_commission_customer"
+
+    assert len(technical_labels) == 6
+    assert technical_targets == [
+        "tab_ontology",
+        "tab_cq_engine",
+        "tab_subjects",
+        "tab_pellet",
+        "tab_measure",
+        "tab_qa",
+    ]
+    assert technical_targets[1] == "tab_cq_engine"
 
 
 def test_app_uses_demo_brand_title_and_shell_navigation() -> None:

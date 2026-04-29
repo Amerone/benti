@@ -1,0 +1,59 @@
+{
+  "ontology_id": "commission-testing",
+  "order": {
+    "order_no": "CO-2024-001",
+    "requester": "李工",
+    "product": {
+      "name": "相控阵雷达导引头",
+      "model": "X-01"
+    },
+    "projects": [
+      {
+        "project_id": "P-001",
+        "name": "高低温振动试验",
+        "task_id": "T-001",
+        "items": [
+          {
+            "item_code": "RCS_MEAN",
+            "item_name": "RCS均值",
+            "unit": "m²",
+            "value": 0.042
+          }
+        ]
+      },
+      {
+        "project_id": "P-002",
+        "name": "电磁兼容试验",
+        "task_id": "T-002",
+        "items": [
+          {
+            "item_code": "BER",
+            "item_name": "误码率",
+            "unit": "",
+            "value": 0.00021
+          }
+        ]
+      }
+    ]
+  },
+  "standards": {
+    "old": {
+      "standard_code": "GJB-7821-2024",
+      "standard_version": "V1",
+      "effective_from": "2024-01-01T00:00:00Z",
+      "criteria": [
+        {"item_code": "RCS_MEAN", "operator": "<=", "threshold": 0.05, "unit": "m²"},
+        {"item_code": "BER", "operator": "<=", "threshold": 0.001, "unit": ""}
+      ]
+    },
+    "new": {
+      "standard_code": "GJB-7821-2024",
+      "standard_version": "V2",
+      "effective_from": "2024-04-01T00:00:00Z",
+      "criteria": [
+        {"item_code": "RCS_MEAN", "operator": "<=", "threshold": 0.035, "unit": "m²"},
+        {"item_code": "BER", "operator": "<=", "threshold": 0.001, "unit": ""}
+      ]
+    }
+  }
+}

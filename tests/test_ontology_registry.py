@@ -139,3 +139,18 @@ def test_packaged_ontologies_and_swrl_examples_are_valid() -> None:
         Graph().parse(by_id["manufacturing-trial"].ttl_path, format="turtle")
         Graph().parse(by_id["process-window"].ttl_path, format="turtle")
         Graph().parse(by_id["equipment-health"].ttl_path, format="turtle")
+
+
+def test_commission_testing_ontology_is_discovered() -> None:
+    descriptors = discover()
+    by_id = {item.ontology_id: item for item in descriptors}
+
+    descriptor = by_id["commission-testing"]
+
+    assert descriptor.label == "委托单试验本体"
+    assert descriptor.version == "1.0.0"
+    assert descriptor.graph_iri.endswith("/commission-testing")
+    assert descriptor.data_graph_iri.endswith("/commission-testing/data")
+    assert descriptor.result_graph_iri.endswith("/commission-testing/result")
+    assert descriptor.spec_graph_iri.endswith("/commission-testing/spec")
+    assert descriptor.ttl_path.name == "commission-testing.ttl"

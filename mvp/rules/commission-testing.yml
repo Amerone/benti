@@ -1,0 +1,17 @@
+rules:
+  - id: decompose_project_to_task
+    description: "1 个试验项目生成 1 个试验任务"
+    when: "test_project_exists_under_order"
+    then: "create_test_task"
+  - id: judge_less_equal_threshold
+    description: "实测值小于等于阈值时通过"
+    when: "measured_value <= threshold"
+    then: "Pass"
+  - id: judge_greater_than_threshold
+    description: "实测值大于阈值时不通过"
+    when: "measured_value > threshold"
+    then: "Fail"
+  - id: mark_task_needs_review_on_flip
+    description: "标准升级导致结论翻转时标记任务需复核"
+    when: "old_status != new_status"
+    then: "taskStatus = NeedsReview"

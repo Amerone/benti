@@ -160,7 +160,7 @@ def _parse_provider_json(response: str | None) -> dict[str, Any]:
     try:
         payload = json.loads(text)
     except json.JSONDecodeError as exc:
-        raise DraftGenerationError("provider must return valid JSON") from exc
+        raise DraftGenerationError(f"provider must return valid JSON: {exc}") from exc
     if not isinstance(payload, dict):
         raise DraftGenerationError("provider must return a JSON object")
     return payload

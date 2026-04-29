@@ -259,6 +259,18 @@ def test_llm_with_template_fallback_uses_template_when_provider_unavailable_or_i
     assert "candidate_classes[0] must be an object" in invalid["source_trace"][-1]["reason"]
 
 
+def test_llm_with_template_fallback_uses_template_when_provider_response_is_not_json():
+    payload = generate_commission_draft(
+        business_text="test",
+        generation_mode="llm_with_template_fallback",
+        provider=StaticProvider("not-json"),
+    )
+
+    assert payload["generation_mode"] == "llm_with_template_fallback"
+    assert payload["source_trace"][0]["generator"] == "template"
+    assert "Expecting value" in payload["source_trace"][-1]["reason"]
+
+
 def test_llm_generation_accepts_valid_provider_json():
     provider_payload = _provider_payload()
 

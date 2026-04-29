@@ -194,6 +194,8 @@ class CommissionGraphService:
 
         for task_node in self._task_nodes(data_graph):
             task_id = _text(data_graph, task_node, CTO.localId)
+            task_changed: list[tuple[URIRef, dict[str, Any]]] = []
+            task_status = "Completed"
             for item_node in self._item_nodes_for_task(data_graph, task_node):
                 record_node = _object(data_graph, item_node, CTO.recordsData)
                 if record_node is None:
@@ -223,23 +225,33 @@ class CommissionGraphService:
                 old_result = self._read_result(data_graph, old_result_node)
                 new_result = self._read_result(data_graph, current_v2)
                 impact = reasoning.compare_results(old_result, new_result)
-                self._write_impact(data_graph, task_node, item_code, impact)
-                self._set_task_status(data_graph, task_node, impact.task_status)
-                changed.append(
-                    {
-                        "task_id": task_id,
-                        "data_record_id": impact.data_record_id,
-                        "item_code": item_code,
-                        "old_status": impact.old_status,
-                        "new_status": impact.new_status,
-                        "flipped": impact.flipped,
-                        "task_status": impact.task_status,
-                        "old_standard": old_result.standard_version,
-                        "new_standard": new_result.standard_version,
-                    }
+                impact_node = self._write_impact(data_graph, task_node, item_code, impact)
+                if impact.flipped:
+                    task_status = "NeedsReview"
+                task_changed.append(
+                    (
+                        impact_node,
+                        {
+                            "task_id": task_id,
+                            "data_record_id": impact.data_record_id,
+                            "item_code": item_code,
+                            "old_status": impact.old_status,
+                            "new_status": impact.new_status,
+                            "flipped": impact.flipped,
+                            "task_status": impact.task_status,
+                            "old_standard": old_result.standard_version,
+                            "new_standard": new_result.standard_version,
+                        },
+                    )
                 )
 
-        changed.sort(key=lambda item: item["task_id"])
+            self._set_task_status(data_graph, task_node, task_status)
+            for impact_node, task_change in task_changed:
+                self._set_impact_task_status(data_graph, impact_node, task_status)
+                task_change["task_status"] = task_status
+                changed.append(task_change)
+
+        changed.sort(key=lambda item: (item["task_id"], item["item_code"]))
         self._sync()
         return {
             "ontology_id": ONTOLOGY_ID,
@@ -286,7 +298,7 @@ class CommissionGraphService:
     def _write_item(self, data_graph: Graph, task_node: URIRef, task_id: str, item: dict[str, Any]) -> URIRef:
         item_node = _node("item", f"{task_id}-{item['item_code']}")
         data_graph.add((item_node, RDF.type, CTO.TestItem))
-        data_graph.set((task_node, CTO.hasTestItem, item_node))
+        data_graph.add((task_node, CTO.hasTestItem, item_node))
         data_graph.set((item_node, CTO.localId, Literal(f"ITEM-{task_id}-{item['item_code']}")))
         data_graph.set((item_node, CTO.itemCode, Literal(item["item_code"])))
         data_graph.set((item_node, CTO.itemName, Literal(item["item_name"])))
@@ -493,6 +505,8 @@ class CommissionGraphService:
         old_result = self._serialize_result(data_graph, old_result_node)
         new_result = self._serialize_result(data_graph, new_result_node)
         record_node = next(data_graph.subjects(CTO.hasJudgementResult, old_result_node), None)
+        task_node = _object(data_graph, impact_node, CTO.impactsTask)
+        task_status = _text(data_graph, impact_node, CTO.taskStatus) or _text(data_graph, task_node, CTO.taskStatus)
         return {
             "impact_id": _text(data_graph, impact_node, CTO.localId),
             "data_record_id": _text(data_graph, record_node, CTO.localId),
@@ -500,7 +514,7 @@ class CommissionGraphService:
             "old_status": old_result["status"],
             "new_status": new_result["status"],
             "flipped": str(next(data_graph.objects(impact_node, CTO.flipped), Literal(False)).toPython()).lower() == "true",
-            "task_status": _text(data_graph, _object(data_graph, impact_node, CTO.impactsTask), CTO.taskStatus),
+            "task_status": task_status,
             "old_standard": old_result["standard_version"],
             "new_standard": new_result["standard_version"],
         }
@@ -539,6 +553,9 @@ class CommissionGraphService:
 
     def _set_task_status(self, data_graph: Graph, task_node: URIRef, status: str) -> None:
         data_graph.set((task_node, CTO.taskStatus, Literal(status)))
+
+    def _set_impact_task_status(self, data_graph: Graph, impact_node: URIRef, status: str) -> None:
+        data_graph.set((impact_node, CTO.taskStatus, Literal(status)))
 
     def _sync(self) -> None:
         self.repository._sync_graph_to_remote(ONTOLOGY_ID, "data")

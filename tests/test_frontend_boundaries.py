@@ -17,6 +17,8 @@ FRONTEND_FILES = [
     Path("mvp/frontend/ui_utils.py"),
     Path("mvp/frontend/app.py"),
     Path("mvp/frontend/tabs/tab_customer.py"),
+    Path("mvp/frontend/tabs/tab_commission_customer.py"),
+    Path("mvp/frontend/tabs/tab_cq_engine.py"),
     Path("mvp/frontend/tabs/tab_ontology.py"),
     Path("mvp/frontend/tabs/tab_subjects.py"),
     Path("mvp/frontend/tabs/tab_pellet.py"),
@@ -31,6 +33,17 @@ FORBIDDEN_PATTERNS = [
     r"\bfrom\s+mvp\.api\b",
     r"\bimport\s+mvp\.api\b",
     r"\bimportlib\b",
+]
+
+COMMISSION_TAB_FILES = [
+    Path("mvp/frontend/tabs/tab_commission_customer.py"),
+    Path("mvp/frontend/tabs/tab_cq_engine.py"),
+]
+
+FORBIDDEN_CORE_NAMES = [
+    "BusinessGraphRepository",
+    "CommissionGraphService",
+    "CQDraftService",
 ]
 
 
@@ -66,6 +79,30 @@ def test_frontend_uses_requests_and_api_v1_prefix() -> None:
             missing_api_prefix.append(str(path))
     assert not missing_requests, f"frontend files without requests usage marker: {missing_requests}"
     assert not missing_api_prefix, f"frontend files without /api/v1 or API_PREFIX marker: {missing_api_prefix}"
+
+
+def test_commission_frontend_tabs_do_not_import_core_modules() -> None:
+    """Commission tabs must stay on the frontend-side API boundary."""
+
+    violations: list[str] = []
+    for path in COMMISSION_TAB_FILES:
+        assert path.exists(), f"missing frontend file: {path}"
+        text = path.read_text(encoding="utf-8")
+        for pattern in FORBIDDEN_PATTERNS:
+            if re.search(pattern, text):
+                violations.append(f"{path}: {pattern}")
+        for name in FORBIDDEN_CORE_NAMES:
+            if name in text:
+                violations.append(f"{path}: {name}")
+    assert not violations, f"commission frontend boundary violations: {violations}"
+
+    commission_text = COMMISSION_TAB_FILES[0].read_text(encoding="utf-8")
+    cq_text = COMMISSION_TAB_FILES[1].read_text(encoding="utf-8")
+    assert '"/commission/demo/reset"' in commission_text
+    assert '"/commission/orders/CO-2024-001"' in commission_text
+    assert '"/commission/impacts/latest"' in commission_text
+    assert '"/cq-engine/generate"' in cq_text
+    assert '"/cq-engine/drafts"' in cq_text
 
 
 def test_measure_tab_exposes_compare_mode_and_reasoner_badges() -> None:
@@ -217,9 +254,11 @@ def test_app_uses_demo_brand_title_and_shell_navigation() -> None:
     assert 'page_title="本体演示"' in text
     assert "inject_brand_theme()" in text
     assert '"客户讲"' in text
+    assert '"委托单试验"' in text
     assert '"技术讲"' in text
     assert '"设备健康"' in text
     assert '"本体"' in text
+    assert '"CQ 工程台"' in text
     assert '"主体"' in text
     assert '"推理"' in text
     assert '"测量"' in text

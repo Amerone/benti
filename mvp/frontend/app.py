@@ -1,8 +1,6 @@
 """Streamlit 前端主入口。
-
-页面只通过 `requests` 调用 `/api/v1`，
-负责顶部状态栏、本体下拉、五个 Tab 和统一 trace 可观测性呈现。
-"""
+页面只通过 `requests` 调用 `/api/v1`，负责顶部状态栏、本体下拉、
+客户 / 委托单 / 技术 / 设备健康多视图与统一 trace 展示。"""
 
 from __future__ import annotations
 
@@ -17,6 +15,8 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from mvp.frontend.tabs import (
+    tab_commission_customer,
+    tab_cq_engine,
     tab_customer,
     tab_equipment_health,
     tab_measure,
@@ -48,9 +48,9 @@ APP_TITLE = "本体演示"
 
 
 def main() -> None:
-    """渲染前端工作台主页。"""
+    """渲染前端工作台首页。"""
 
-    st.set_page_config(page_title="本体演示", page_icon="◫", layout="wide")
+    st.set_page_config(page_title="本体演示", page_icon="●", layout="wide")
     init_frontend_state()
     inject_brand_theme()
 
@@ -65,6 +65,7 @@ def main() -> None:
     audience_tabs = st.tabs(
         [
             "客户讲",
+            "委托单试验",
             "技术讲",
             "设备健康",
         ]
@@ -73,17 +74,20 @@ def main() -> None:
     with audience_tabs[0]:
         tab_customer.render(ontology_id=get_active_ontology())
     with audience_tabs[1]:
-        _render_technical_tabs(ontologies)
+        tab_commission_customer.render()
     with audience_tabs[2]:
+        _render_technical_tabs(ontologies)
+    with audience_tabs[3]:
         tab_equipment_health.render()
 
 
 def _render_technical_tabs(ontologies: list[dict[str, object]]) -> None:
-    """渲染技术讲页面内的原有工程视图。"""
+    """渲染技术讲页面内的工程视图。"""
 
     tabs = st.tabs(
         [
             "本体",
+            "CQ 工程台",
             "主体",
             "推理",
             "测量",
@@ -94,12 +98,14 @@ def _render_technical_tabs(ontologies: list[dict[str, object]]) -> None:
     with tabs[0]:
         tab_ontology.render(ontologies=ontologies)
     with tabs[1]:
-        tab_subjects.render(ontology_id=get_active_ontology())
+        tab_cq_engine.render()
     with tabs[2]:
-        tab_pellet.render(ontology_id=get_active_ontology())
+        tab_subjects.render(ontology_id=get_active_ontology())
     with tabs[3]:
-        tab_measure.render(ontology_id=get_active_ontology())
+        tab_pellet.render(ontology_id=get_active_ontology())
     with tabs[4]:
+        tab_measure.render(ontology_id=get_active_ontology())
+    with tabs[5]:
         tab_qa.render(ontology_id=get_active_ontology())
 
 

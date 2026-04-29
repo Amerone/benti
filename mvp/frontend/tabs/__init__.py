@@ -1,5 +1,4 @@
 """前端业务页面组件。
+各页面只通过 `requests` 访问 `/api/v1`，不直接依赖 `mvp.core` 或 `mvp.api`。"""
 
-每个页面都只通过 `requests` 链接 `/api/v1`，
-不直接访问 `mvp.core` 或 `mvp.api`。
-"""
+from . import tab_commission_customer, tab_cq_engine

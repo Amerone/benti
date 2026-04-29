@@ -38,6 +38,19 @@ class StaticProvider(LLMProvider):
         return self.response
 
 
+def _provider_payload() -> dict[str, object]:
+    return {
+        "candidate_cqs": [{"id": "CQ-CT-900", "title": "Provider draft"}],
+        "candidate_classes": [{"name": "CommissionOrder", "label": "Commission order"}],
+        "candidate_relations": [{"name": "decomposesToTask", "domain": "TestProject", "range": "TestTask"}],
+        "candidate_properties": [{"name": "taskStatus", "domain": "TestTask", "range": "xsd:string"}],
+        "candidate_rules": [{"id": "provider_rule", "then": "Keep"}],
+        "draft_turtle": "# ontology-id: commission-testing\n# provider draft\n",
+        "draft_sparql_tests": ["CQ-CT-900"],
+        "source_trace": [{"provider": "seed"}],
+    }
+
+
 def test_parse_commission_cq_markdown_reads_all_plan_cqs():
     questions = parse_commission_cq_markdown()
 
@@ -122,25 +135,60 @@ SELECT * WHERE {}
 
 
 def test_template_only_generation_returns_reviewable_deterministic_draft():
+    business_text = "Commission orders decompose projects into tasks and track standard upgrades."
     payload = generate_commission_draft(
-        business_text="Commission orders decompose projects into tasks and track standard upgrades.",
+        business_text=business_text,
         generation_mode="template_only",
     )
 
     assert payload["generation_mode"] == "template_only"
-    assert payload["candidate_cqs"][0]["id"] == "CQ-CT-004"
-    assert payload["candidate_classes"] == ["CommissionOrder", "TestTask"]
-    assert payload["candidate_relations"] == ["decomposesToTask", "supersedesStandard"]
-    assert payload["candidate_properties"] == ["draftStatus", "draftPayload"]
-    assert payload["candidate_rules"] == ["project_decomposes_to_task", "standard_upgrade_requires_review"]
-    assert "commission-testing" in payload["draft_turtle"]
-    assert "This is a draft sketch" in payload["draft_turtle"]
+    assert [item["id"] for item in payload["candidate_cqs"]] == [
+        "CQ-CT-001",
+        "CQ-CT-002",
+        "CQ-CT-003",
+        "CQ-CT-004",
+        "CQ-CT-005",
+    ]
+    assert payload["candidate_cqs"][0]["question"] == "Which test projects belong to CO-2024-001?"
+    assert {item["name"] for item in payload["candidate_classes"]} >= {
+        "CommissionOrder",
+        "Product",
+        "TestProject",
+        "TestTask",
+        "TestItem",
+        "TestDataRecord",
+        "PassCriterion",
+        "StandardVersion",
+        "JudgementResult",
+        "ReevaluationImpact",
+    }
+    assert {item["name"] for item in payload["candidate_relations"]} >= {
+        "hasProduct",
+        "hasTestProject",
+        "decomposesToTask",
+        "supersedesStandard",
+    }
+    assert {item["name"] for item in payload["candidate_properties"]} >= {
+        "taskStatus",
+        "measuredValue",
+        "threshold",
+    }
+    assert {item["id"] for item in payload["candidate_rules"]} >= {
+        "decompose_project_to_task",
+        "judge_less_equal_threshold",
+        "mark_task_needs_review_on_flip",
+    }
+    assert "# ontology-id: commission-testing\n" in payload["draft_turtle"]
     assert "CommissionOrder" in payload["draft_turtle"]
-    assert "TestTask" in payload["draft_turtle"]
     assert "decomposesToTask" in payload["draft_turtle"]
     assert "supersedesStandard" in payload["draft_turtle"]
-    assert payload["draft_sparql_tests"] == ["CQ-CT-004: flipped historical results after V2"]
-    assert payload["source_trace"][0]["mode"] == "template_only"
+    assert payload["draft_sparql_tests"] == ["CQ-CT-001", "CQ-CT-004"]
+    assert payload["source_trace"][0] == {"generator": "template", "business_text": business_text}
+
+
+def test_generate_commission_draft_rejects_invalid_generation_mode():
+    with pytest.raises(DraftGenerationError, match="generation_mode must be one of"):
+        generate_commission_draft(business_text="test", generation_mode="invalid")
 
 
 def test_llm_only_requires_available_provider():
@@ -173,28 +221,46 @@ def test_llm_with_template_fallback_uses_template_when_provider_unavailable_or_i
     invalid = generate_commission_draft(
         business_text="test",
         generation_mode="llm_with_template_fallback",
-        provider=StaticProvider("not-json"),
+        provider=StaticProvider(
+            json.dumps(
+                {
+                    "candidate_cqs": [{"id": "CQ-CT-900", "title": "Old shape"}],
+                    "candidate_classes": ["CommissionOrder"],
+                    "candidate_relations": ["decomposesToTask"],
+                    "candidate_properties": ["taskStatus"],
+                    "candidate_rules": ["provider_rule"],
+                    "draft_turtle": "# ontology-id: commission-testing\n",
+                    "draft_sparql_tests": ["CQ-CT-900"],
+                    "source_trace": [{"provider": "legacy"}],
+                }
+            )
+        ),
     )
 
     assert unavailable["generation_mode"] == "llm_with_template_fallback"
     assert invalid["generation_mode"] == "llm_with_template_fallback"
-    assert unavailable["candidate_cqs"][0]["id"] == "CQ-CT-004"
-    assert invalid["candidate_cqs"][0]["id"] == "CQ-CT-004"
-    assert unavailable["source_trace"][-1]["fallback"] == "template_only"
-    assert invalid["source_trace"][-1]["fallback"] == "template_only"
+    assert [item["id"] for item in unavailable["candidate_cqs"]] == [
+        "CQ-CT-001",
+        "CQ-CT-002",
+        "CQ-CT-003",
+        "CQ-CT-004",
+        "CQ-CT-005",
+    ]
+    assert [item["id"] for item in invalid["candidate_cqs"]] == [
+        "CQ-CT-001",
+        "CQ-CT-002",
+        "CQ-CT-003",
+        "CQ-CT-004",
+        "CQ-CT-005",
+    ]
+    assert unavailable["source_trace"][0]["generator"] == "template"
+    assert invalid["source_trace"][0]["generator"] == "template"
+    assert unavailable["source_trace"][-1]["reason"] == "provider unavailable"
+    assert "candidate_classes[0] must be an object" in invalid["source_trace"][-1]["reason"]
 
 
 def test_llm_generation_accepts_valid_provider_json():
-    provider_payload = {
-        "candidate_cqs": [{"id": "CQ-CT-900", "title": "Provider draft"}],
-        "candidate_classes": ["CommissionOrder"],
-        "candidate_relations": ["decomposesToTask"],
-        "candidate_properties": ["draftStatus"],
-        "candidate_rules": ["provider_rule"],
-        "draft_turtle": "Draft only. Not formal OWL/Turtle.",
-        "draft_sparql_tests": ["CQ-CT-900"],
-        "source_trace": [{"provider": "test-static"}],
-    }
+    provider_payload = _provider_payload()
 
     payload = generate_commission_draft(
         business_text="test",
@@ -203,8 +269,15 @@ def test_llm_generation_accepts_valid_provider_json():
     )
 
     assert payload["generation_mode"] == "llm_only"
-    assert payload["candidate_cqs"] == provider_payload["candidate_cqs"]
-    assert payload["source_trace"][0]["provider"] == "test-static"
+    assert payload["candidate_cqs"] == [{"id": "CQ-CT-900", "question": "Provider draft"}]
+    assert payload["candidate_classes"] == provider_payload["candidate_classes"]
+    assert payload["candidate_relations"] == provider_payload["candidate_relations"]
+    assert payload["candidate_properties"] == provider_payload["candidate_properties"]
+    assert payload["candidate_rules"] == provider_payload["candidate_rules"]
+    assert payload["draft_turtle"] == provider_payload["draft_turtle"]
+    assert payload["draft_sparql_tests"] == provider_payload["draft_sparql_tests"]
+    assert payload["source_trace"][0] == {"provider": "seed"}
+    assert payload["source_trace"][-1]["provider"] == "test-static"
 
 
 def test_cq_draft_service_persists_lists_and_updates_status():
@@ -260,3 +333,16 @@ def test_cq_draft_service_rejects_invalid_status():
 
     with pytest.raises(CQEngineError, match="invalid draft status"):
         service.update_status(created["draft_id"], "archived")
+
+
+def test_cq_draft_service_lists_multiple_drafts_in_deterministic_id_order():
+    repo = BusinessGraphRepository()
+    repo.load_ontologies(reload=False)
+    service = CQDraftService(repository=repo)
+
+    service.save_draft(generate_commission_draft(business_text="draft one", generation_mode="template_only"))
+    service.save_draft(generate_commission_draft(business_text="draft two", generation_mode="template_only"))
+
+    listing = service.list_drafts()
+
+    assert [item["draft_id"] for item in listing["items"]] == ["CQD-001", "CQD-002"]

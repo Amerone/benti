@@ -1,0 +1,514 @@
+# ontology-id: manufacturing-trial
+# ontology-label: 制造业试验数据管理本体
+# ontology-version: 1.0.0
+# ontology-swrl: manufacturing-trial.swrl
+
+@prefix mto: <https://hifar.top/mto#> .
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix xml: <http://www.w3.org/XML/1998/namespace> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+
+<https://hifar.top/mto/ontology/manufacturing-trial> rdf:type owl:Ontology .
+
+#################################################################
+#    Object Properties
+#################################################################
+
+###  https://hifar.top/mto#appliesToTrial
+mto:appliesToTrial rdf:type owl:ObjectProperty ;
+                rdfs:domain mto:Parameter ;
+                rdfs:range mto:Trial ;
+                rdfs:comment "参数适用于哪个试验"@zh-cn .
+
+
+###  https://hifar.top/mto#evaluatedAgainst
+mto:evaluatedAgainst rdf:type owl:ObjectProperty ;
+                  rdfs:domain mto:Result ;
+                  rdfs:range mto:Specification ;
+                  rdfs:comment "判定结果按哪个规格版本得出"@zh-cn .
+
+
+###  https://hifar.top/mto#hasBatch
+mto:hasBatch rdf:type owl:ObjectProperty ;
+          rdfs:domain mto:Trial ;
+          rdfs:range mto:Batch ;
+          rdfs:comment "试验包含批次"@zh-cn .
+
+
+###  https://hifar.top/mto#belongsToTrial
+mto:belongsToTrial rdf:type owl:ObjectProperty ;
+                owl:inverseOf mto:hasBatch ;
+                rdfs:domain mto:Batch ;
+                rdfs:range mto:Trial ;
+                rdfs:comment "批次归属于哪个试验"@zh-cn .
+
+
+###  https://hifar.top/mto#hasMeasurement
+mto:hasMeasurement rdf:type owl:ObjectProperty ;
+                rdfs:domain mto:Batch ;
+                rdfs:range mto:Measurement ;
+                rdfs:comment "批次包含测量记录"@zh-cn .
+
+
+###  https://hifar.top/mto#forBatch
+mto:forBatch rdf:type owl:ObjectProperty ;
+             owl:inverseOf mto:hasMeasurement ;
+             rdfs:domain mto:Measurement ;
+             rdfs:range mto:Batch ;
+             rdfs:comment "测量记录所属批次"@zh-cn .
+
+
+###  https://hifar.top/mto#hasParameter
+mto:hasParameter rdf:type owl:ObjectProperty ;
+              rdfs:domain mto:Measurement ;
+              rdfs:range mto:Parameter ;
+              rdfs:comment "测量记录使用哪个参数"@zh-cn .
+
+
+###  https://hifar.top/mto#forParameter
+mto:forParameter rdf:type owl:ObjectProperty ;
+              owl:equivalentProperty mto:hasParameter ;
+              rdfs:domain mto:Measurement ;
+              rdfs:range mto:Parameter ;
+              rdfs:comment "测量记录对应的参数"@zh-cn .
+
+
+###  https://hifar.top/mto#hasResult
+mto:hasResult rdf:type owl:ObjectProperty ;
+           rdfs:domain mto:Measurement ;
+           rdfs:range mto:Result ;
+           rdfs:comment "测量记录有哪些判定结果"@zh-cn .
+
+
+###  https://hifar.top/mto#forMeasurement
+mto:forMeasurement rdf:type owl:ObjectProperty ;
+                owl:inverseOf mto:hasResult ;
+                rdfs:domain mto:Result ;
+                rdfs:range mto:Measurement ;
+                rdfs:comment "判定结果对应的测量记录"@zh-cn .
+
+
+###  https://hifar.top/mto#hasLatestResult
+mto:hasLatestResult rdf:type owl:ObjectProperty ;
+                 rdfs:domain mto:Measurement ;
+                 rdfs:range mto:Result ;
+                 rdfs:comment "测量记录当前最新判定结果"@zh-cn .
+
+
+###  https://hifar.top/mto#hasSpecification
+mto:hasSpecification rdf:type owl:ObjectProperty ;
+                  rdfs:domain mto:Measurement ;
+                  rdfs:range mto:Specification ;
+                  rdfs:comment "测量记录原始采用的规格"@zh-cn .
+
+
+###  https://hifar.top/mto#impactedMeasurement
+mto:impactedMeasurement rdf:type owl:ObjectProperty ;
+                     rdfs:domain mto:SpecChangeImpact ;
+                     rdfs:range mto:Measurement ;
+                     rdfs:comment "规格变更影响哪条测量"@zh-cn .
+
+
+###  https://hifar.top/mto#newResult
+mto:newResult rdf:type owl:ObjectProperty ;
+           rdfs:domain mto:SpecChangeImpact ;
+           rdfs:range mto:Result ;
+           rdfs:comment "变更后结果"@zh-cn .
+
+
+###  https://hifar.top/mto#previousResult
+mto:previousResult rdf:type owl:ObjectProperty ;
+                rdfs:domain mto:SpecChangeImpact ;
+                rdfs:range mto:Result ;
+                rdfs:comment "变更前结果"@zh-cn .
+
+
+###  https://hifar.top/mto#supersedes
+mto:supersedes rdf:type owl:ObjectProperty ;
+            rdfs:domain mto:Specification ;
+            rdfs:range mto:Specification ;
+            rdfs:comment "新规格替代旧规格"@zh-cn .
+
+
+###  https://hifar.top/mto#supersedesSpec
+mto:supersedesSpec rdf:type owl:ObjectProperty ;
+                owl:equivalentProperty mto:supersedes ;
+                rdfs:domain mto:Specification ;
+                rdfs:range mto:Specification ;
+                rdfs:comment "规格版本替代链"@zh-cn .
+
+
+###  https://hifar.top/mto#supersededBy
+mto:supersededBy rdf:type owl:ObjectProperty ;
+              rdfs:domain mto:Result ;
+              rdfs:range mto:Result ;
+              rdfs:comment "旧判定结果被新结果替代"@zh-cn .
+
+
+#################################################################
+#    Data properties
+#################################################################
+
+###  https://hifar.top/mto#batchCode
+mto:batchCode rdf:type owl:DatatypeProperty ;
+           rdfs:domain mto:Batch ;
+           rdfs:range xsd:string ;
+           rdfs:comment "B03"@zh-cn .
+
+
+###  https://hifar.top/mto#batchGradient
+mto:batchGradient rdf:type owl:DatatypeProperty ;
+               rdfs:domain mto:Batch ;
+               rdfs:range xsd:string ;
+               rdfs:comment "高温梯度 193°C"@zh-cn .
+
+
+###  https://hifar.top/mto#changeReason
+mto:changeReason rdf:type owl:DatatypeProperty ;
+              rdfs:domain mto:Specification ;
+              rdfs:range xsd:string ;
+              rdfs:comment "初始试制规格"@zh-cn .
+
+
+###  https://hifar.top/mto#reason
+mto:reason rdf:type owl:DatatypeProperty ;
+        rdfs:domain mto:Specification ;
+        rdfs:range xsd:string ;
+        rdfs:comment "规格创建或变更原因"@zh-cn .
+
+
+###  https://hifar.top/mto#createdAt
+mto:createdAt rdf:type owl:DatatypeProperty ;
+           rdfs:range xsd:dateTime ;
+           rdfs:comment "对象创建时间"@zh-cn .
+
+
+###  https://hifar.top/mto#deviation
+mto:deviation rdf:type owl:DatatypeProperty ;
+           rdfs:domain mto:Result ;
+           rdfs:range xsd:decimal .
+
+
+###  https://hifar.top/mto#effectiveFrom
+mto:effectiveFrom rdf:type owl:DatatypeProperty ;
+               rdfs:domain mto:Specification ;
+               rdfs:range xsd:dateTime .
+
+
+###  https://hifar.top/mto#evidenceLowerLimit
+mto:evidenceLowerLimit rdf:type owl:DatatypeProperty ;
+                    rdfs:domain mto:Result ;
+                    rdfs:range xsd:decimal .
+
+
+###  https://hifar.top/mto#evidenceUpperLimit
+mto:evidenceUpperLimit rdf:type owl:DatatypeProperty ;
+                    rdfs:domain mto:Result ;
+                    rdfs:range xsd:decimal .
+
+
+###  https://hifar.top/mto#evidenceValue
+mto:evidenceValue rdf:type owl:DatatypeProperty ;
+               rdfs:domain mto:Result ;
+               rdfs:range xsd:decimal .
+
+
+###  https://hifar.top/mto#inferredAt
+mto:inferredAt rdf:type owl:DatatypeProperty ;
+            rdfs:domain mto:Result ;
+            rdfs:range xsd:dateTime ;
+            rdfs:comment "判定结果生成时间"@zh-cn .
+
+
+###  https://hifar.top/mto#impactReason
+mto:impactReason rdf:type owl:DatatypeProperty ;
+              rdfs:domain mto:SpecChangeImpact ;
+              rdfs:range xsd:string ;
+              rdfs:comment "规格上限从 195°C 收紧到 190°C，M007 超上限 3.5°C"@zh-cn .
+
+
+###  https://hifar.top/mto#inferenceRule
+mto:inferenceRule rdf:type owl:DatatypeProperty ;
+               rdfs:domain mto:Result ;
+               rdfs:range xsd:string .
+
+
+###  https://hifar.top/mto#appliedRule
+mto:appliedRule rdf:type owl:DatatypeProperty ;
+             owl:equivalentProperty mto:inferenceRule ;
+             rdfs:domain mto:Result ;
+             rdfs:range xsd:string ;
+             rdfs:comment "实际生效的判定规则名"@zh-cn .
+
+
+###  https://hifar.top/mto#againstSpecVersion
+mto:againstSpecVersion rdf:type owl:DatatypeProperty ;
+                    rdfs:domain mto:Result ;
+                    rdfs:range xsd:string ;
+                    rdfs:comment "判定所依据的规格版本号"@zh-cn .
+
+
+###  https://hifar.top/mto#judgedAt
+mto:judgedAt rdf:type owl:DatatypeProperty ;
+          rdfs:domain mto:Result ;
+          rdfs:range xsd:dateTime .
+
+
+###  https://hifar.top/mto#limitSource
+mto:limitSource rdf:type owl:DatatypeProperty ;
+             rdfs:domain mto:Parameter ;
+             rdfs:range xsd:string ;
+             rdfs:comment "Specification"@zh-cn .
+
+
+###  https://hifar.top/mto#lowerLimit
+mto:lowerLimit rdf:type owl:DatatypeProperty ;
+            rdfs:domain mto:Specification ;
+            rdfs:range xsd:decimal .
+
+
+###  https://hifar.top/mto#measurementId
+mto:measurementId rdf:type owl:DatatypeProperty ;
+               rdfs:domain mto:Measurement ;
+               rdfs:range xsd:string ;
+               rdfs:comment "M007"@zh-cn .
+
+
+###  https://hifar.top/mto#localId
+mto:localId rdf:type owl:DatatypeProperty ;
+         rdfs:range xsd:string ;
+         rdfs:comment "对象在本体内的局部业务 ID"@zh-cn .
+
+
+###  https://hifar.top/mto#measuredAt
+mto:measuredAt rdf:type owl:DatatypeProperty ;
+            rdfs:domain mto:Measurement ;
+            rdfs:range xsd:dateTime ;
+            rdfs:comment "测量时间"@zh-cn .
+
+
+###  https://hifar.top/mto#measurementTime
+mto:measurementTime rdf:type owl:DatatypeProperty ;
+                 rdfs:domain mto:Measurement ;
+                 rdfs:range xsd:dateTime ;
+                 rdfs:comment "2026-04-20T09:30:00+08:00"@zh-cn .
+
+
+###  https://hifar.top/mto#measurementValue
+mto:measurementValue rdf:type owl:DatatypeProperty ;
+                  rdfs:domain mto:Measurement ;
+                  rdfs:range xsd:decimal ;
+                  rdfs:comment 193.5 .
+
+
+###  https://hifar.top/mto#measuredValue
+mto:measuredValue rdf:type owl:DatatypeProperty ;
+               owl:equivalentProperty mto:measurementValue ;
+               rdfs:domain mto:Measurement ;
+               rdfs:range xsd:decimal ;
+               rdfs:comment "测量值"@zh-cn .
+
+
+###  https://hifar.top/mto#parameterCode
+mto:parameterCode rdf:type owl:DatatypeProperty ;
+               rdfs:domain mto:Parameter ;
+               rdfs:range xsd:string ;
+               rdfs:comment "INJECTION_TEMPERATURE"@zh-cn .
+
+
+###  https://hifar.top/mto#parameterName
+mto:parameterName rdf:type owl:DatatypeProperty ;
+               rdfs:domain mto:Parameter ;
+               rdfs:range xsd:string ;
+               rdfs:comment "注塑温度"@zh-cn .
+
+
+###  https://hifar.top/mto#reasoner
+mto:reasoner rdf:type owl:DatatypeProperty ;
+          rdfs:domain mto:Result ;
+          rdfs:range xsd:string ;
+          rdfs:comment "推理来源，例如 python-deterministic 或 pellet-swrl"@zh-cn .
+
+
+###  https://hifar.top/mto#participatesInInference
+mto:participatesInInference rdf:type owl:DatatypeProperty ;
+                         rdfs:domain mto:Parameter ;
+                         rdfs:range xsd:boolean ;
+                         rdfs:comment "true"@zh-cn .
+
+
+###  https://hifar.top/mto#resultStatus
+mto:resultStatus rdf:type owl:DatatypeProperty ;
+              rdfs:domain mto:Result ;
+              rdfs:range xsd:string .
+
+
+###  https://hifar.top/mto#specVersion
+mto:specVersion rdf:type owl:DatatypeProperty ;
+             rdfs:domain mto:Specification ;
+             rdfs:range xsd:string ;
+             rdfs:comment "Spec_v1"@zh-cn .
+
+
+###  https://hifar.top/mto#trialCode
+mto:trialCode rdf:type owl:DatatypeProperty ;
+           rdfs:domain mto:Trial ;
+           rdfs:range xsd:string ;
+           rdfs:comment "T001"@zh-cn .
+
+
+###  https://hifar.top/mto#unit
+mto:unit rdf:type owl:DatatypeProperty ;
+      rdfs:domain mto:Parameter ;
+      rdfs:range xsd:string ;
+      rdfs:comment "°C"@zh-cn .
+
+
+###  https://hifar.top/mto#upperLimit
+mto:upperLimit rdf:type owl:DatatypeProperty ;
+            rdfs:domain mto:Specification ;
+            rdfs:range xsd:decimal .
+
+
+###  https://hifar.top/mto#valueType
+mto:valueType rdf:type owl:DatatypeProperty ;
+           rdfs:domain mto:Parameter ;
+           rdfs:range xsd:string ;
+           rdfs:comment "number"@zh-cn .
+
+
+#################################################################
+#    Classes
+#################################################################
+
+###  https://hifar.top/mto#Batch
+mto:Batch a owl:Class ;
+       rdfs:subClassOf [ rdf:type owl:Restriction ;
+                         owl:onProperty mto:hasMeasurement ;
+                         owl:allValuesFrom mto:Measurement
+                       ] ,
+                       [ rdf:type owl:Restriction ;
+                         owl:onProperty mto:batchCode ;
+                         owl:qualifiedCardinality "1"^^xsd:nonNegativeInteger ;
+                         owl:onDataRange xsd:string
+                       ] ;
+       rdfs:label "批次"@zh ;
+       rdfs:comment """试制批次
+表示温度梯度批次，如 B01、B02、B03"""@zh-cn .
+
+
+###  https://hifar.top/mto#FailHighResult
+mto:FailHighResult a owl:Class ;
+                rdfs:subClassOf mto:Result .
+
+
+###  https://hifar.top/mto#FailLowResult
+mto:FailLowResult a owl:Class ;
+               rdfs:subClassOf mto:Result .
+
+
+###  https://hifar.top/mto#Measurement
+mto:Measurement a owl:Class ;
+             rdfs:subClassOf [ rdf:type owl:Restriction ;
+                               owl:onProperty mto:hasResult ;
+                               owl:someValuesFrom mto:Result
+                             ] ,
+                             [ rdf:type owl:Restriction ;
+                               owl:onProperty mto:hasParameter ;
+                               owl:qualifiedCardinality "1"^^xsd:nonNegativeInteger ;
+                               owl:onClass mto:Parameter
+                             ] ,
+                             [ rdf:type owl:Restriction ;
+                               owl:onProperty mto:measurementValue ;
+                               owl:qualifiedCardinality "1"^^xsd:nonNegativeInteger ;
+                               owl:onDataRange xsd:decimal
+                             ] ;
+             rdfs:label "测量记录"@zh ;
+             rdfs:comment """测量记录
+表示一条真实测量事实，如 M007 = 193.5 °C"""@zh-cn .
+
+
+###  https://hifar.top/mto#Parameter
+mto:Parameter a owl:Class ;
+           rdfs:label "参数"@zh ;
+           rdfs:comment """测量参数
+表示注塑温度、振动频率等可扩展参数"""@zh-cn .
+
+
+###  https://hifar.top/mto#PassResult
+mto:PassResult a owl:Class ;
+            rdfs:subClassOf mto:Result .
+
+
+###  https://hifar.top/mto#Result
+mto:Result a owl:Class ;
+        rdfs:subClassOf [ rdf:type owl:Restriction ;
+                          owl:onProperty mto:evaluatedAgainst ;
+                          owl:qualifiedCardinality "1"^^xsd:nonNegativeInteger ;
+                          owl:onClass mto:Specification
+                        ] ;
+        rdfs:label "判定结果"@zh ;
+        rdfs:comment """判定结果
+表示一次判定事实，保存规则名、偏差、证据"""@zh-cn .
+
+
+###  https://hifar.top/mto#SpecChangeImpact
+mto:SpecChangeImpact a owl:Class ;
+                  rdfs:comment """规格变更影响
+表示规格变化导致哪些测量结论发生变化"""@zh-cn .
+
+
+###  https://hifar.top/mto#Specification
+mto:Specification a owl:Class ;
+               rdfs:subClassOf [ rdf:type owl:Restriction ;
+                                 owl:onProperty mto:lowerLimit ;
+                                 owl:qualifiedCardinality "1"^^xsd:nonNegativeInteger ;
+                                 owl:onDataRange xsd:decimal
+                               ] ,
+                               [ rdf:type owl:Restriction ;
+                                 owl:onProperty mto:specVersion ;
+                                 owl:qualifiedCardinality "1"^^xsd:nonNegativeInteger ;
+                                 owl:onDataRange xsd:string
+                               ] ,
+                               [ rdf:type owl:Restriction ;
+                                 owl:onProperty mto:upperLimit ;
+                                 owl:qualifiedCardinality "1"^^xsd:nonNegativeInteger ;
+                                 owl:onDataRange xsd:decimal
+                               ] ;
+               rdfs:label "规格"@zh ;
+               rdfs:comment """规格版本
+表示 Spec_v1、Spec_v2，不覆盖旧版本"""@zh-cn .
+
+
+###  https://hifar.top/mto#Trial
+mto:Trial a owl:Class ;
+       rdfs:subClassOf [ rdf:type owl:Restriction ;
+                         owl:onProperty mto:hasBatch ;
+                         owl:someValuesFrom mto:Batch
+                       ] ,
+                       [ rdf:type owl:Restriction ;
+                         owl:onProperty mto:trialCode ;
+                         owl:qualifiedCardinality "1"^^xsd:nonNegativeInteger ;
+                         owl:onDataRange xsd:string
+                       ] ;
+       rdfs:label "试验"@zh ;
+       rdfs:comment """试验
+表示一次完整试验，如 T001 注塑工艺验证"""@zh-cn .
+
+
+#################################################################
+#    Individuals
+#################################################################
+
+###  https://hifar.top/mto#test-1
+mto:test-1 rdf:type owl:NamedIndividual ,
+                 [ rdf:type owl:Restriction ;
+                   owl:onProperty mto:trialCode ;
+                   owl:someValuesFrom xsd:string
+                 ] .
+
+
+###  Generated by the OWL API (version 4.5.29.2024-05-13T12:11:03Z) https://github.com/owlcs/owlapi
+

@@ -1,0 +1,47 @@
+# ontology-id: process-window
+# ontology-label: 工艺窗口本体
+# ontology-version: 1.0.0
+
+@prefix pwo: <https://hifar.top/pwo#> .
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+
+<https://hifar.top/pwo/ontology/process-window>
+    a owl:Ontology ;
+    rdfs:label "工艺窗口本体"@zh ;
+    owl:versionInfo "1.0.0" .
+
+pwo:ProcessWindow
+    a owl:Class ;
+    rdfs:label "工艺窗口"@zh ;
+    rdfs:comment "描述一个工艺参数组合允许运行的范围，用于验证多本体切换。"@zh .
+
+pwo:WindowParameter
+    a owl:Class ;
+    rdfs:label "窗口参数"@zh ;
+    rdfs:comment "工艺窗口中的单个控制参数，例如温度、压力或速度。"@zh .
+
+pwo:WindowBoundary
+    a owl:Class ;
+    rdfs:label "窗口边界"@zh ;
+    rdfs:comment "参数在工艺窗口内的边界定义。"@zh .
+
+pwo:hasWindowParameter
+    a owl:ObjectProperty ;
+    rdfs:label "包含窗口参数"@zh ;
+    rdfs:domain pwo:ProcessWindow ;
+    rdfs:range pwo:WindowParameter .
+
+pwo:minValue
+    a owl:DatatypeProperty ;
+    rdfs:label "最小值"@zh ;
+    rdfs:domain pwo:WindowBoundary ;
+    rdfs:range xsd:decimal .
+
+pwo:maxValue
+    a owl:DatatypeProperty ;
+    rdfs:label "最大值"@zh ;
+    rdfs:domain pwo:WindowBoundary ;
+    rdfs:range xsd:decimal .
+

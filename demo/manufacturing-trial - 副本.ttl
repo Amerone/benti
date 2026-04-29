@@ -1,0 +1,374 @@
+@prefix : <http://www.semanticweb.org/hifar/ontologies/2026/3/untitled-ontology-12/> .
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix xml: <http://www.w3.org/XML/1998/namespace> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@base <http://www.semanticweb.org/hifar/ontologies/2026/3/untitled-ontology-12/> .
+
+<https://hifar.top/manufacturing-trial/ontology> rdf:type owl:Ontology .
+
+#################################################################
+#    Object Properties
+#################################################################
+
+###  https://hifar.top/manufacturing-trial/ontology#appliesToTrial
+:appliesToTrial rdf:type owl:ObjectProperty ;
+                rdfs:domain :Parameter ;
+                rdfs:range :Trial ;
+                rdfs:comment "参数适用于哪个试验"@zh-cn .
+
+
+###  https://hifar.top/manufacturing-trial/ontology#evaluatedAgainst
+:evaluatedAgainst rdf:type owl:ObjectProperty ;
+                  rdfs:domain :Result ;
+                  rdfs:range :Specification ;
+                  rdfs:comment "判定结果按哪个规格版本得出"@zh-cn .
+
+
+###  https://hifar.top/manufacturing-trial/ontology#hasBatch
+:hasBatch rdf:type owl:ObjectProperty ;
+          rdfs:domain :Trial ;
+          rdfs:range :Batch ;
+          rdfs:comment "试验包含批次"@zh-cn .
+
+
+###  https://hifar.top/manufacturing-trial/ontology#hasMeasurement
+:hasMeasurement rdf:type owl:ObjectProperty ;
+                rdfs:domain :Batch ;
+                rdfs:range :Measurement ;
+                rdfs:comment "批次包含测量记录"@zh-cn .
+
+
+###  https://hifar.top/manufacturing-trial/ontology#hasParameter
+:hasParameter rdf:type owl:ObjectProperty ;
+              rdfs:domain :Measurement ;
+              rdfs:range :Parameter ;
+              rdfs:comment "测量记录使用哪个参数"@zh-cn .
+
+
+###  https://hifar.top/manufacturing-trial/ontology#hasResult
+:hasResult rdf:type owl:ObjectProperty ;
+           rdfs:domain :Measurement ;
+           rdfs:range :Result ;
+           rdfs:comment "测量记录有哪些判定结果"@zh-cn .
+
+
+###  https://hifar.top/manufacturing-trial/ontology#hasSpecification
+:hasSpecification rdf:type owl:ObjectProperty ;
+                  rdfs:domain :Measurement ;
+                  rdfs:range :Specification ;
+                  rdfs:comment "测量记录原始采用的规格"@zh-cn .
+
+
+###  https://hifar.top/manufacturing-trial/ontology#impactedMeasurement
+:impactedMeasurement rdf:type owl:ObjectProperty ;
+                     rdfs:domain :SpecChangeImpact ;
+                     rdfs:range :Measurement ;
+                     rdfs:comment "规格变更影响哪条测量"@zh-cn .
+
+
+###  https://hifar.top/manufacturing-trial/ontology#newResult
+:newResult rdf:type owl:ObjectProperty ;
+           rdfs:domain :SpecChangeImpact ;
+           rdfs:range :Result ;
+           rdfs:comment "变更后结果"@zh-cn .
+
+
+###  https://hifar.top/manufacturing-trial/ontology#previousResult
+:previousResult rdf:type owl:ObjectProperty ;
+                rdfs:domain :SpecChangeImpact ;
+                rdfs:range :Result ;
+                rdfs:comment "变更前结果"@zh-cn .
+
+
+###  https://hifar.top/manufacturing-trial/ontology#supersedes
+:supersedes rdf:type owl:ObjectProperty ;
+            rdfs:domain :Specification ;
+            rdfs:range :Specification ;
+            rdfs:comment "新规格替代旧规格"@zh-cn .
+
+
+#################################################################
+#    Data properties
+#################################################################
+
+###  https://hifar.top/manufacturing-trial/ontology#batchCode
+:batchCode rdf:type owl:DatatypeProperty ;
+           rdfs:domain :Batch ;
+           rdfs:range xsd:string ;
+           rdfs:comment "B03"@zh-cn .
+
+
+###  https://hifar.top/manufacturing-trial/ontology#batchGradient
+:batchGradient rdf:type owl:DatatypeProperty ;
+               rdfs:domain :Batch ;
+               rdfs:range xsd:string ;
+               rdfs:comment "高温梯度 193°C"@zh-cn .
+
+
+###  https://hifar.top/manufacturing-trial/ontology#changeReason
+:changeReason rdf:type owl:DatatypeProperty ;
+              rdfs:domain :Specification ;
+              rdfs:range xsd:string ;
+              rdfs:comment "初始试制规格"@zh-cn .
+
+
+###  https://hifar.top/manufacturing-trial/ontology#deviation
+:deviation rdf:type owl:DatatypeProperty ;
+           rdfs:domain :Result ;
+           rdfs:range xsd:decimal .
+
+
+###  https://hifar.top/manufacturing-trial/ontology#effectiveFrom
+:effectiveFrom rdf:type owl:DatatypeProperty ;
+               rdfs:domain :Specification ;
+               rdfs:range xsd:dateTime .
+
+
+###  https://hifar.top/manufacturing-trial/ontology#evidenceLowerLimit
+:evidenceLowerLimit rdf:type owl:DatatypeProperty ;
+                    rdfs:domain :Result ;
+                    rdfs:range xsd:decimal .
+
+
+###  https://hifar.top/manufacturing-trial/ontology#evidenceUpperLimit
+:evidenceUpperLimit rdf:type owl:DatatypeProperty ;
+                    rdfs:domain :Result ;
+                    rdfs:range xsd:decimal .
+
+
+###  https://hifar.top/manufacturing-trial/ontology#evidenceValue
+:evidenceValue rdf:type owl:DatatypeProperty ;
+               rdfs:domain :Result ;
+               rdfs:range xsd:decimal .
+
+
+###  https://hifar.top/manufacturing-trial/ontology#impactReason
+:impactReason rdf:type owl:DatatypeProperty ;
+              rdfs:domain :SpecChangeImpact ;
+              rdfs:range xsd:string ;
+              rdfs:comment "规格上限从 195°C 收紧到 190°C，M007 超上限 3.5°C"@zh-cn .
+
+
+###  https://hifar.top/manufacturing-trial/ontology#inferenceRule
+:inferenceRule rdf:type owl:DatatypeProperty ;
+               rdfs:domain :Result ;
+               rdfs:range xsd:string .
+
+
+###  https://hifar.top/manufacturing-trial/ontology#judgedAt
+:judgedAt rdf:type owl:DatatypeProperty ;
+          rdfs:domain :Result ;
+          rdfs:range xsd:dateTime .
+
+
+###  https://hifar.top/manufacturing-trial/ontology#limitSource
+:limitSource rdf:type owl:DatatypeProperty ;
+             rdfs:domain :Parameter ;
+             rdfs:range xsd:string ;
+             rdfs:comment "Specification"@zh-cn .
+
+
+###  https://hifar.top/manufacturing-trial/ontology#lowerLimit
+:lowerLimit rdf:type owl:DatatypeProperty ;
+            rdfs:domain :Specification ;
+            rdfs:range xsd:decimal .
+
+
+###  https://hifar.top/manufacturing-trial/ontology#measurementId
+:measurementId rdf:type owl:DatatypeProperty ;
+               rdfs:domain :Measurement ;
+               rdfs:range xsd:string ;
+               rdfs:comment "M007"@zh-cn .
+
+
+###  https://hifar.top/manufacturing-trial/ontology#measurementTime
+:measurementTime rdf:type owl:DatatypeProperty ;
+                 rdfs:domain :Measurement ;
+                 rdfs:range xsd:dateTime ;
+                 rdfs:comment "2026-04-20T09:30:00+08:00"@zh-cn .
+
+
+###  https://hifar.top/manufacturing-trial/ontology#measurementValue
+:measurementValue rdf:type owl:DatatypeProperty ;
+                  rdfs:domain :Measurement ;
+                  rdfs:range xsd:decimal ;
+                  rdfs:comment 193.5 .
+
+
+###  https://hifar.top/manufacturing-trial/ontology#parameterCode
+:parameterCode rdf:type owl:DatatypeProperty ;
+               rdfs:domain :Parameter ;
+               rdfs:range xsd:string ;
+               rdfs:comment "INJECTION_TEMPERATURE"@zh-cn .
+
+
+###  https://hifar.top/manufacturing-trial/ontology#parameterName
+:parameterName rdf:type owl:DatatypeProperty ;
+               rdfs:domain :Parameter ;
+               rdfs:range xsd:string ;
+               rdfs:comment "注塑温度"@zh-cn .
+
+
+###  https://hifar.top/manufacturing-trial/ontology#participatesInInference
+:participatesInInference rdf:type owl:DatatypeProperty ;
+                         rdfs:domain :Parameter ;
+                         rdfs:range xsd:boolean ;
+                         rdfs:comment "true"@zh-cn .
+
+
+###  https://hifar.top/manufacturing-trial/ontology#resultStatus
+:resultStatus rdf:type owl:DatatypeProperty ;
+              rdfs:domain :Result ;
+              rdfs:range xsd:string .
+
+
+###  https://hifar.top/manufacturing-trial/ontology#specVersion
+:specVersion rdf:type owl:DatatypeProperty ;
+             rdfs:domain :Specification ;
+             rdfs:range xsd:string ;
+             rdfs:comment "Spec_v1"@zh-cn .
+
+
+###  https://hifar.top/manufacturing-trial/ontology#trialCode
+:trialCode rdf:type owl:DatatypeProperty ;
+           rdfs:domain :Trial ;
+           rdfs:range xsd:string ;
+           rdfs:comment "T001"@zh-cn .
+
+
+###  https://hifar.top/manufacturing-trial/ontology#unit
+:unit rdf:type owl:DatatypeProperty ;
+      rdfs:domain :Parameter ;
+      rdfs:range xsd:string ;
+      rdfs:comment "°C"@zh-cn .
+
+
+###  https://hifar.top/manufacturing-trial/ontology#upperLimit
+:upperLimit rdf:type owl:DatatypeProperty ;
+            rdfs:domain :Specification ;
+            rdfs:range xsd:decimal .
+
+
+###  https://hifar.top/manufacturing-trial/ontology#valueType
+:valueType rdf:type owl:DatatypeProperty ;
+           rdfs:domain :Parameter ;
+           rdfs:range xsd:string ;
+           rdfs:comment "number"@zh-cn .
+
+
+#################################################################
+#    Classes
+#################################################################
+
+###  https://hifar.top/manufacturing-trial/ontology#Batch
+:Batch rdf:type owl:Class ;
+       rdfs:subClassOf [ rdf:type owl:Restriction ;
+                         owl:onProperty :hasMeasurement ;
+                         owl:allValuesFrom :Measurement
+                       ] ,
+                       [ rdf:type owl:Restriction ;
+                         owl:onProperty :batchCode ;
+                         owl:qualifiedCardinality "1"^^xsd:nonNegativeInteger ;
+                         owl:onDataRange xsd:string
+                       ] ;
+       rdfs:comment """试制批次
+表示温度梯度批次，如 B01、B02、B03"""@zh-cn .
+
+
+###  https://hifar.top/manufacturing-trial/ontology#FailHighResult
+:FailHighResult rdf:type owl:Class ;
+                rdfs:subClassOf :Result .
+
+
+###  https://hifar.top/manufacturing-trial/ontology#FailLowResult
+:FailLowResult rdf:type owl:Class ;
+               rdfs:subClassOf :Result .
+
+
+###  https://hifar.top/manufacturing-trial/ontology#Measurement
+:Measurement rdf:type owl:Class ;
+             rdfs:subClassOf [ rdf:type owl:Restriction ;
+                               owl:onProperty :hasResult ;
+                               owl:someValuesFrom :Result
+                             ] ,
+                             [ rdf:type owl:Restriction ;
+                               owl:onProperty :hasParameter ;
+                               owl:qualifiedCardinality "1"^^xsd:nonNegativeInteger ;
+                               owl:onClass :Parameter
+                             ] ,
+                             [ rdf:type owl:Restriction ;
+                               owl:onProperty :measurementValue ;
+                               owl:qualifiedCardinality "1"^^xsd:nonNegativeInteger ;
+                               owl:onDataRange xsd:decimal
+                             ] ;
+             rdfs:comment """测量记录
+表示一条真实测量事实，如 M007 = 193.5 °C"""@zh-cn .
+
+
+###  https://hifar.top/manufacturing-trial/ontology#Parameter
+:Parameter rdf:type owl:Class ;
+           rdfs:comment """测量参数
+表示注塑温度、振动频率等可扩展参数"""@zh-cn .
+
+
+###  https://hifar.top/manufacturing-trial/ontology#PassResult
+:PassResult rdf:type owl:Class ;
+            rdfs:subClassOf :Result .
+
+
+###  https://hifar.top/manufacturing-trial/ontology#Result
+:Result rdf:type owl:Class ;
+        rdfs:subClassOf [ rdf:type owl:Restriction ;
+                          owl:onProperty :evaluatedAgainst ;
+                          owl:qualifiedCardinality "1"^^xsd:nonNegativeInteger ;
+                          owl:onClass :Specification
+                        ] ;
+        rdfs:comment """判定结果
+表示一次判定事实，保存规则名、偏差、证据"""@zh-cn .
+
+
+###  https://hifar.top/manufacturing-trial/ontology#SpecChangeImpact
+:SpecChangeImpact rdf:type owl:Class ;
+                  rdfs:comment """规格变更影响
+表示规格变化导致哪些测量结论发生变化"""@zh-cn .
+
+
+###  https://hifar.top/manufacturing-trial/ontology#Specification
+:Specification rdf:type owl:Class ;
+               rdfs:subClassOf [ rdf:type owl:Restriction ;
+                                 owl:onProperty :lowerLimit ;
+                                 owl:qualifiedCardinality "1"^^xsd:nonNegativeInteger ;
+                                 owl:onDataRange xsd:decimal
+                               ] ,
+                               [ rdf:type owl:Restriction ;
+                                 owl:onProperty :specVersion ;
+                                 owl:qualifiedCardinality "1"^^xsd:nonNegativeInteger ;
+                                 owl:onDataRange xsd:string
+                               ] ,
+                               [ rdf:type owl:Restriction ;
+                                 owl:onProperty :upperLimit ;
+                                 owl:qualifiedCardinality "1"^^xsd:nonNegativeInteger ;
+                                 owl:onDataRange xsd:decimal
+                               ] ;
+               rdfs:comment """规格版本
+表示 Spec_v1、Spec_v2，不覆盖旧版本"""@zh-cn .
+
+
+###  https://hifar.top/manufacturing-trial/ontology#Trial
+:Trial rdf:type owl:Class ;
+       rdfs:subClassOf [ rdf:type owl:Restriction ;
+                         owl:onProperty :hasBatch ;
+                         owl:someValuesFrom :Batch
+                       ] ,
+                       [ rdf:type owl:Restriction ;
+                         owl:onProperty :trialCode ;
+                         owl:qualifiedCardinality "1"^^xsd:nonNegativeInteger ;
+                         owl:onDataRange xsd:string
+                       ] ;
+       rdfs:comment """试验
+表示一次完整试验，如 T001 注塑工艺验证"""@zh-cn .
+
+
+###  Generated by the OWL API (version 4.5.29.2024-05-13T12:11:03Z) https://github.com/owlcs/owlapi

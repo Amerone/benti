@@ -1,0 +1,19 @@
+services:
+  fuseki:
+    image: apache/jena-fuseki:5.1.0
+    container_name: manufacturing-trial-fuseki
+    ports:
+      - "3030:3030"
+    environment:
+      FUSEKI_DATASET: manufacturing-trial
+      JVM_ARGS: -Xmx2g
+    command:
+      - --tdb2
+      - --loc=/fuseki/databases/manufacturing-trial
+      - /manufacturing-trial
+    volumes:
+      - fuseki-tdb2:/fuseki
+    restart: unless-stopped
+
+volumes:
+  fuseki-tdb2:

@@ -1,0 +1,86 @@
+# ontology-id: equipment-health
+# ontology-label: 设备健康本体
+# ontology-version: 1.0.0
+
+@prefix eho: <https://hifar.top/eho#> .
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+
+<https://hifar.top/eho/ontology/equipment-health>
+    a owl:Ontology ;
+    rdfs:label "设备健康本体"@zh ;
+    owl:versionInfo "1.0.0" .
+
+eho:Equipment
+    a owl:Class ;
+    rdfs:label "设备"@zh ;
+    rdfs:comment "被监测、评估和维护的生产设备。"@zh .
+
+eho:SensorReading
+    a owl:Class ;
+    rdfs:label "传感器读数"@zh ;
+    rdfs:comment "来自设备传感器的 ABOX 读数事实。"@zh .
+
+eho:HealthThreshold
+    a owl:Class ;
+    rdfs:label "健康阈值"@zh ;
+    rdfs:comment "设备健康指标的可接受范围。"@zh .
+
+eho:HealthJudgement
+    a owl:Class ;
+    rdfs:label "健康判定"@zh ;
+    rdfs:comment "读数与阈值比对后的判定结果。"@zh .
+
+eho:MaintenanceWorkOrder
+    a owl:Class ;
+    rdfs:label "维修工单"@zh ;
+    rdfs:comment "由异常健康判定触发的维护动作。"@zh .
+
+eho:hasReading
+    a owl:ObjectProperty ;
+    rdfs:label "包含读数"@zh ;
+    rdfs:domain eho:Equipment ;
+    rdfs:range eho:SensorReading .
+
+eho:judgedBy
+    a owl:ObjectProperty ;
+    rdfs:label "由判定说明"@zh ;
+    rdfs:domain eho:SensorReading ;
+    rdfs:range eho:HealthJudgement .
+
+eho:usesThreshold
+    a owl:ObjectProperty ;
+    rdfs:label "使用阈值"@zh ;
+    rdfs:domain eho:HealthJudgement ;
+    rdfs:range eho:HealthThreshold .
+
+eho:opensWorkOrder
+    a owl:ObjectProperty ;
+    rdfs:label "触发工单"@zh ;
+    rdfs:domain eho:HealthJudgement ;
+    rdfs:range eho:MaintenanceWorkOrder .
+
+eho:readingValue
+    a owl:DatatypeProperty ;
+    rdfs:label "读数值"@zh ;
+    rdfs:domain eho:SensorReading ;
+    rdfs:range xsd:decimal .
+
+eho:lowerLimit
+    a owl:DatatypeProperty ;
+    rdfs:label "下限"@zh ;
+    rdfs:domain eho:HealthThreshold ;
+    rdfs:range xsd:decimal .
+
+eho:upperLimit
+    a owl:DatatypeProperty ;
+    rdfs:label "上限"@zh ;
+    rdfs:domain eho:HealthThreshold ;
+    rdfs:range xsd:decimal .
+
+eho:judgementStatus
+    a owl:DatatypeProperty ;
+    rdfs:label "判定状态"@zh ;
+    rdfs:domain eho:HealthJudgement ;
+    rdfs:range xsd:string .

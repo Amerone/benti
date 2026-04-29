@@ -1,0 +1,33 @@
+# 制造业试验数据管理本体的 SWRL 对照规则。
+# MVP 第一阶段的业务结论仍由 Python 确定性规则落地；本文件用于 Pellet/SWRL
+# 对照模式核对 Rule_Pass、Rule_Fail_Low、Rule_Fail_High 三类判定语义。
+
+Prefix(mto:=<https://hifar.top/mto#>)
+Prefix(swrlb:=<http://www.w3.org/2003/11/swrlb#>)
+
+Rule_Pass:
+    mto:Measurement(?m) ^
+    mto:Specification(?s) ^
+    mto:measuredValue(?m, ?value) ^
+    mto:lowerLimit(?s, ?lower) ^
+    mto:upperLimit(?s, ?upper) ^
+    swrlb:greaterThanOrEqual(?value, ?lower) ^
+    swrlb:lessThanOrEqual(?value, ?upper)
+    -> mto:resultStatus(?m, "Pass")
+
+Rule_Fail_Low:
+    mto:Measurement(?m) ^
+    mto:Specification(?s) ^
+    mto:measuredValue(?m, ?value) ^
+    mto:lowerLimit(?s, ?lower) ^
+    swrlb:lessThan(?value, ?lower)
+    -> mto:resultStatus(?m, "Fail_Low")
+
+Rule_Fail_High:
+    mto:Measurement(?m) ^
+    mto:Specification(?s) ^
+    mto:measuredValue(?m, ?value) ^
+    mto:upperLimit(?s, ?upper) ^
+    swrlb:greaterThan(?value, ?upper)
+    -> mto:resultStatus(?m, "Fail_High")
+

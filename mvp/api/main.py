@@ -13,9 +13,13 @@ from fastapi.concurrency import run_in_threadpool
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
+from mvp.api.commission_routes import create_router as create_commission_router
+from mvp.api.cq_engine_routes import create_router as create_cq_engine_router
 from mvp.api import envelope, exceptions
 from mvp.api.exceptions import DomainError
 from mvp.api.trace_middleware import TraceMiddleware
+from mvp.core.commission_graph import CommissionGraphService
+from mvp.core.cq_engine import CQDraftService
 from mvp.core import graph, inference, owlready_reasoner, parameters, qa
 from mvp.core.llm.base import LLMProvider
 from mvp.core.llm.factory import get_provider
@@ -157,6 +161,9 @@ def create_app(
     app.state.fuseki_client = getattr(app.state.repository, "client", None) or active_fuseki_client
     app.state.active_ontology_id = None
     app.state.latest_impacts = {}
+    app.state.commission_graph = CommissionGraphService(repository=active_repository)
+    app.state.cq_draft_service = CQDraftService(repository=active_repository)
+    app.state.latest_commission_impact = {"changed": []}
 
     app.add_middleware(
         CORSMiddleware,
@@ -455,6 +462,9 @@ def create_app(
             trace=trace,
         )
         return envelope.ok(result, trace=trace)
+
+    router.include_router(create_commission_router())
+    router.include_router(create_cq_engine_router())
 
     app.include_router(router)
     return app

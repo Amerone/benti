@@ -90,19 +90,21 @@ def test_commission_demo_reset_and_upgrade_flow():
         assert latest_by_task["T-002"]["new_standard"] == "V2"
 
 
-def test_cq_engine_template_generation_and_draft_review():
+def test_cq_engine_template_only_generation_and_draft_review():
     with _client() as client:
         generate_response = client.post(
             "/api/v1/cq-engine/generate",
-            json={"business_text": "Commission orders decompose into tasks and track standard upgrades."},
+            json={
+                "business_text": "Commission orders decompose into tasks and track standard upgrades.",
+                "generation_mode": "template_only",
+            },
         )
 
         assert generate_response.status_code == 200
         generated = generate_response.json()["data"]
-        assert generated["generation_mode"] == "llm_with_template_fallback"
+        assert generated["generation_mode"] == "template_only"
         assert generated["candidate_cqs"][0]["id"] == "CQ-CT-001"
         assert generated["source_trace"][0]["generator"] == "template"
-        assert generated["source_trace"][-1]["status"] == "fallback"
 
         create_response = client.post("/api/v1/cq-engine/drafts", json={"payload": generated})
 
@@ -110,7 +112,7 @@ def test_cq_engine_template_generation_and_draft_review():
         created = create_response.json()["data"]
         assert created["draft_id"] == "CQD-001"
         assert created["draft_status"] == "draft"
-        assert created["payload"]["generation_mode"] == "llm_with_template_fallback"
+        assert created["payload"]["generation_mode"] == "template_only"
 
         list_response = client.get("/api/v1/cq-engine/drafts")
 
@@ -132,7 +134,22 @@ def test_cq_engine_template_generation_and_draft_review():
         updated = update_response.json()["data"]
         assert updated["draft_id"] == "CQD-001"
         assert updated["draft_status"] == "reviewed"
+        assert updated["payload"]["generation_mode"] == "template_only"
         assert updated["payload"] == generated
+
+
+def test_cq_engine_generate_defaults_to_fallback_mode():
+    with _client() as client:
+        generate_response = client.post(
+            "/api/v1/cq-engine/generate",
+            json={"business_text": "Commission orders decompose into tasks and track standard upgrades."},
+        )
+
+        assert generate_response.status_code == 200
+        generated = generate_response.json()["data"]
+        assert generated["generation_mode"] == "llm_with_template_fallback"
+        assert generated["source_trace"][0]["generator"] == "template"
+        assert generated["source_trace"][-1]["status"] == "fallback"
 
 
 def test_cq_engine_rejects_invalid_generation_mode_and_draft_status():

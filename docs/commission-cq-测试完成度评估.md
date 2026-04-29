@@ -33,7 +33,7 @@ python -m pytest tests/test_frontend_boundaries.py -q
 结果：
 
 ```text
-158 passed
+163 passed
 1 passed
 30 passed
 ```
@@ -59,7 +59,6 @@ python -m pytest tests/test_frontend_boundaries.py -q
 ```text
 正式本体结构在线编辑接口
 本体版本发布/回滚接口
-CQ 草案正文在线编辑接口
 ```
 
 已执行 Streamlit 页面探针，确认页面可渲染，并存在关键控件：
@@ -72,6 +71,7 @@ CQ 草案正文在线编辑接口
 生成并保存草案
 生成模式
 发布草案
+保存草案正文
 ```
 
 ## 需求完成度矩阵
@@ -89,11 +89,11 @@ CQ 草案正文在线编辑接口
 | R9 | CQ 可执行验收 | CQ Markdown 可解析，SPARQL 能在 Fuseki 上执行 | `tests/test_commission_cq_integration.py -q -rs`：`1 passed` | 通过 |
 | R10 | LLM 生成做成开关 | 支持 `llm_only`、`llm_with_template_fallback`、`template_only` | 单元测试覆盖三种模式；页面有“生成模式”控件 | 通过 |
 | R11 | LLM 不直接覆盖正式 OWL/Turtle | 生成结果保存为 `CQDraft` 草案 | draft API 保存/list/update，正式 ontology 文件未被生成流程覆盖 | 通过 |
-| R12 | CQ 草案可维护、查询、修改 | 保存草案、查询草案、修改状态为 `reviewed`，并发布 reviewed 草案 | `/cq-engine/drafts`、`PATCH /drafts/{draft_id}`、`POST /drafts/{draft_id}/publish`；页面有生成、保存、reviewed 和发布操作 | 通过 |
+| R12 | CQ 草案可维护、查询、修改 | 保存草案、查询草案、编辑草案正文、修改状态为 `reviewed`，并发布 reviewed 草案 | `/cq-engine/drafts`、`PATCH /drafts/{draft_id}`、`POST /drafts/{draft_id}/publish`；页面有生成、保存正文、reviewed 和发布操作；payload 有最小结构校验，已发布草案只读 | 通过 |
 | R13 | 页面可以维护、查询、修改本体 | 本体页面能加载和查询，能维护/修改正式本体结构 | 当前有 ontology load/list/subjects 能力；没有正式本体编辑、版本发布、回滚 API | 未满足 |
 | R14 | 新建任意委托单 | 用 API/页面创建非 `CO-2024-001` 委托单 | `POST /commission/orders` 已通过 TDD 覆盖；页面表格支持 `试验项目×N` 和测试项录入 | 通过 |
 | R15 | 任意试验任务录入新测试数据 | 用 API/页面录入新的 commission 测试数据记录并判定 | `POST /commission/data-records` 已通过 TDD 覆盖；页面已有测试数据录入表单 | 通过 |
-| R16 | CQ 草案发布/导出 | reviewed 草案发布为可导出的 Turtle/CQ/规则资产 | `POST /cq-engine/drafts/{draft_id}/publish` 已通过 TDD 覆盖；页面已有发布按钮和导出包展示；正式文件落地归入版本发布缺口 | 通过 |
+| R16 | CQ 草案发布/导出 | reviewed 草案发布为可导出的 Turtle/CQ/规则资产 | `POST /cq-engine/drafts/{draft_id}/publish` 已通过 TDD 覆盖；页面已有发布按钮和导出包展示；发布后草案不可变，避免导出包漂移；正式文件落地归入版本发布缺口 | 通过 |
 | R17 | 客户演示与开发演示文档 | 客户讲、开发讲、傻瓜式操作、价值说明存在 | `docs/commission-cq-*` 与 `docs/系统演示操作手册.md` | 通过 |
 | R18 | 前端不直接依赖 core | Streamlit tabs 只走 API 工具 | `tests/test_frontend_boundaries.py` | 通过 |
 
@@ -123,12 +123,12 @@ CQ 草案正文在线编辑接口
 - CQ 解析和 Expected 校验
 - SPARQL/Fuseki 集成回归
 - LLM/template 三模式
-- 草案保存、查询、状态修改
+- 草案保存、查询、正文编辑、状态修改
+- 草案 payload 最小结构校验和已发布只读保护
 - reviewed 草案发布为导出包
 
 尚缺：
 
-- 草案正文在线编辑
 - 发布导出结果写入正式文件或对象存储
 - 发布后的版本和回滚记录
 
@@ -156,10 +156,11 @@ CQ 草案正文在线编辑接口
 4. 委托单页面表单：创建/修改委托单、产品、试验项目和测试项。
 5. 测试数据页面表单：录入实测值并触发自动判定。
 6. CQ 页面发布按钮：对 reviewed 草案调用发布接口并展示导出包。
+7. CQ 草案正文编辑器：编辑草案 JSON 后再 reviewed/publish。
 
 建议下一轮继续按 TDD 补齐：
 
-1. CQ 草案编辑器：编辑草案 JSON/Markdown 后再 reviewed/publish。
-2. 本体发布历史：记录发布版本、导出文件位置和回滚入口。
-3. 正式本体结构编辑：在线维护 class/property/restriction，并走草案审核。
-4. 批量导入：从 Excel/CSV 一次性导入多委托单、多任务、多测试项。
+1. 本体发布历史：记录发布版本、导出文件位置和回滚入口。
+2. 正式本体结构编辑：在线维护 class/property/restriction，并走草案审核。
+3. 批量导入：从 Excel/CSV 一次性导入多委托单、多任务、多测试项。
+4. CQ 草案 Markdown 视图：在 JSON 编辑之外提供更适合客户审阅的文本化编辑入口。

@@ -1,8 +1,11 @@
 from __future__ import annotations
 
 from fastapi.testclient import TestClient
+from rdflib import Literal
+from rdflib.namespace import RDF
 
 from mvp.api.main import create_app
+from mvp.core import commission_graph
 from mvp.core.graph import BusinessGraphRepository
 from mvp.core.llm.base import LLMProvider
 
@@ -218,6 +221,155 @@ def test_cq_engine_rejects_invalid_generation_mode_and_draft_status():
         assert invalid_status.status_code == 400
         assert invalid_status.json()["ok"] is False
         assert invalid_status.json()["error"]["code"] == "CQ_ENGINE_ERROR"
+
+
+def test_cq_engine_draft_payload_can_be_edited_before_review_and_publish():
+    with _client() as client:
+        generated = client.post(
+            "/api/v1/cq-engine/generate",
+            json={
+                "business_text": "Commission orders decompose into tasks and track standard upgrades.",
+                "generation_mode": "template_only",
+            },
+        ).json()["data"]
+        created = client.post("/api/v1/cq-engine/drafts", json={"payload": generated}).json()["data"]
+        edited_payload = {
+            **generated,
+            "draft_turtle": "# edited ontology sketch\nCommissionOrder -> hasAuditTrail -> CQDraft",
+            "draft_sparql_tests": ["CQ-EDIT-001"],
+        }
+
+        edit_response = client.patch(
+            f"/api/v1/cq-engine/drafts/{created['draft_id']}",
+            json={"payload": edited_payload},
+        )
+
+        assert edit_response.status_code == 200
+        edited = edit_response.json()["data"]
+        assert edited["draft_id"] == created["draft_id"]
+        assert edited["draft_status"] == "draft"
+        assert edited["payload"]["draft_turtle"].startswith("# edited ontology sketch")
+        assert edited["payload"]["draft_sparql_tests"] == ["CQ-EDIT-001"]
+
+        listed = client.get("/api/v1/cq-engine/drafts").json()["data"]["items"][0]
+        assert listed["payload"] == edited_payload
+
+        client.patch(f"/api/v1/cq-engine/drafts/{created['draft_id']}", json={"draft_status": "reviewed"})
+        published = client.post(f"/api/v1/cq-engine/drafts/{created['draft_id']}/publish").json()["data"]
+        assert published["exports"]["draft_turtle"].startswith("# edited ontology sketch")
+        assert published["exports"]["draft_sparql_tests"] == ["CQ-EDIT-001"]
+
+
+def test_cq_engine_rejects_invalid_draft_payload_and_keeps_published_drafts_immutable():
+    with _client() as client:
+        generated = client.post(
+            "/api/v1/cq-engine/generate",
+            json={
+                "business_text": "Commission orders decompose into tasks and track standard upgrades.",
+                "generation_mode": "template_only",
+            },
+        ).json()["data"]
+
+        invalid_create = client.post("/api/v1/cq-engine/drafts", json={"payload": {"foo": "bar"}})
+
+        assert invalid_create.status_code == 400
+        assert invalid_create.json()["error"]["code"] == "CQ_ENGINE_ERROR"
+
+        created = client.post("/api/v1/cq-engine/drafts", json={"payload": generated}).json()["data"]
+        invalid_edit = client.patch(
+            f"/api/v1/cq-engine/drafts/{created['draft_id']}",
+            json={"payload": {"foo": "bar"}},
+        )
+
+        assert invalid_edit.status_code == 400
+        assert invalid_edit.json()["error"]["code"] == "CQ_ENGINE_ERROR"
+
+        client.patch(f"/api/v1/cq-engine/drafts/{created['draft_id']}", json={"draft_status": "reviewed"})
+        published = client.post(f"/api/v1/cq-engine/drafts/{created['draft_id']}/publish").json()["data"]
+        original_turtle = published["exports"]["draft_turtle"]
+
+        mutate_published = client.patch(
+            f"/api/v1/cq-engine/drafts/{created['draft_id']}",
+            json={
+                "payload": {
+                    **generated,
+                    "draft_turtle": "MUTATED",
+                }
+            },
+        )
+
+        assert mutate_published.status_code == 400
+        assert mutate_published.json()["error"]["code"] == "CQ_ENGINE_ERROR"
+        listing = client.get("/api/v1/cq-engine/drafts").json()["data"]["items"]
+        listed = next(item for item in listing if item["draft_id"] == created["draft_id"])
+        assert listed["draft_status"] == "published"
+        assert listed["exports"]["draft_turtle"] == original_turtle
+
+
+def test_cq_engine_rejects_publishing_stored_invalid_draft_payload_without_mutating_status():
+    repository = BusinessGraphRepository()
+    draft_node = commission_graph._node("draft", "CQD-BAD")
+    data_graph = repository.graph("commission-testing", "data")
+    data_graph.add((draft_node, RDF.type, commission_graph.CTO.CQDraft))
+    data_graph.set((draft_node, commission_graph.CTO.localId, Literal("CQD-BAD")))
+    data_graph.set((draft_node, commission_graph.CTO.draftStatus, Literal("reviewed")))
+    data_graph.set((draft_node, commission_graph.CTO.draftPayload, Literal('{"foo":"bar"}')))
+
+    with _client_for_repo(repository) as client:
+        publish_response = client.post("/api/v1/cq-engine/drafts/CQD-BAD/publish")
+
+        assert publish_response.status_code == 400
+        assert publish_response.json()["error"]["code"] == "CQ_ENGINE_ERROR"
+        listing = client.get("/api/v1/cq-engine/drafts").json()["data"]["items"]
+        listed = next(item for item in listing if item["draft_id"] == "CQD-BAD")
+        assert listed["draft_status"] == "reviewed"
+        assert "exports" not in listed
+
+
+def test_cq_engine_rejects_direct_patch_to_published_status():
+    with _client() as client:
+        generated = client.post(
+            "/api/v1/cq-engine/generate",
+            json={
+                "business_text": "Commission orders decompose into tasks and track standard upgrades.",
+                "generation_mode": "template_only",
+            },
+        ).json()["data"]
+        created = client.post("/api/v1/cq-engine/drafts", json={"payload": generated}).json()["data"]
+
+        direct_publish = client.patch(
+            f"/api/v1/cq-engine/drafts/{created['draft_id']}",
+            json={"draft_status": "published"},
+        )
+
+        assert direct_publish.status_code == 400
+        assert direct_publish.json()["error"]["code"] == "CQ_ENGINE_ERROR"
+        listed = client.get("/api/v1/cq-engine/drafts").json()["data"]["items"][0]
+        assert listed["draft_status"] == "draft"
+        assert "exports" not in listed
+
+
+def test_cq_engine_rejects_mixed_invalid_payload_update_without_partial_status_mutation():
+    with _client() as client:
+        generated = client.post(
+            "/api/v1/cq-engine/generate",
+            json={
+                "business_text": "Commission orders decompose into tasks and track standard upgrades.",
+                "generation_mode": "template_only",
+            },
+        ).json()["data"]
+        created = client.post("/api/v1/cq-engine/drafts", json={"payload": generated}).json()["data"]
+
+        mixed_update = client.patch(
+            f"/api/v1/cq-engine/drafts/{created['draft_id']}",
+            json={"draft_status": "reviewed", "payload": {"foo": "bar"}},
+        )
+
+        assert mixed_update.status_code == 400
+        assert mixed_update.json()["error"]["code"] == "CQ_ENGINE_ERROR"
+        listed = client.get("/api/v1/cq-engine/drafts").json()["data"]["items"][0]
+        assert listed["draft_status"] == "draft"
+        assert listed["payload"] == generated
 
 
 def test_commission_order_upsert_and_data_record_entry_are_generic():

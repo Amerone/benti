@@ -28,6 +28,12 @@ GENERATION_MODES = [
     "template_only",
     "llm_only",
 ]
+REQUIRED_DRAFT_PAYLOAD_TYPES = {
+    "draft_turtle": str,
+    "candidate_cqs": list,
+    "candidate_rules": list,
+    "draft_sparql_tests": list,
+}
 
 
 def render() -> None:
@@ -119,6 +125,7 @@ def render() -> None:
         )
 
     payload = selected_draft.get("payload") or {}
+    _render_payload_editor(selected_draft_id, selected_draft, payload)
     _render_payload(payload)
     _render_exports((published_draft or selected_draft).get("exports") or {})
 
@@ -143,6 +150,51 @@ def _draft_rows(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
             }
         )
     return rows
+
+
+def _render_payload_editor(selected_draft_id: str, selected_draft: dict[str, Any], payload: dict[str, Any]) -> None:
+    if selected_draft.get("draft_status") == "published":
+        st.caption("已发布草案只读；如需修改，请新建草案。")
+        return
+
+    with st.form("cq-draft-payload-form"):
+        edited_text = st.text_area(
+            "草案正文 JSON",
+            value=json.dumps(payload, ensure_ascii=False, indent=2),
+            height=260,
+        )
+        submitted = st.form_submit_button("保存草案正文", width="stretch")
+
+    if not submitted:
+        return
+    try:
+        edited_payload = parse_draft_payload_editor_text(edited_text)
+    except ValueError as exc:
+        st.error(str(exc))
+        return
+
+    envelope = api_request("PATCH", f"/cq-engine/drafts/{selected_draft_id}", json_body={"payload": edited_payload}, trace_key=TRACE_KEY, trace_title="CQ 草案正文保存")
+    render_envelope_feedback(envelope, success_message="草案正文已保存。")
+    if envelope.get("ok"):
+        st.rerun()
+
+
+def parse_draft_payload_editor_text(text: str) -> dict[str, Any]:
+    try:
+        payload = json.loads(text)
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"草案正文 JSON 格式错误：{exc.msg}") from exc
+    if not isinstance(payload, dict):
+        raise ValueError("草案正文必须是 JSON object")
+    for field, expected_type in REQUIRED_DRAFT_PAYLOAD_TYPES.items():
+        if field not in payload:
+            raise ValueError(f"草案正文缺少字段: {field}")
+        if not isinstance(payload[field], expected_type):
+            expected_name = "list" if expected_type is list else "string"
+            raise ValueError(f"草案正文字段类型错误: {field} 必须是 {expected_name}")
+    if not payload["draft_turtle"].strip():
+        raise ValueError("草案正文 draft_turtle 不能为空")
+    return payload
 
 
 def _render_payload(payload: dict[str, Any]) -> None:

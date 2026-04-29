@@ -290,13 +290,33 @@ def test_commission_page_exposes_generic_order_and_data_record_forms() -> None:
 def test_cq_page_exposes_reviewed_draft_publish_action() -> None:
     """CQ page should let reviewed drafts use the publish/export API from the UI."""
 
+    from mvp.frontend.tabs import tab_cq_engine
+
     text = Path("mvp/frontend/tabs/tab_cq_engine.py").read_text(encoding="utf-8")
+    assert 'st.form("cq-draft-payload-form")' in text
+    assert '"草案正文 JSON"' in text
+    assert 'api_request("PATCH", f"/cq-engine/drafts/{selected_draft_id}"' in text
+    assert '"payload": edited_payload' in text
     assert '"/cq-engine/drafts/{selected_draft_id}/publish"' in text
     assert 'api_request("POST", f"/cq-engine/drafts/{selected_draft_id}/publish"' in text
     assert "exports" in text
     assert "draft_turtle" in text
     assert "candidate_rules" in text
     assert "draft_sparql_tests" in text
+
+    parsed = tab_cq_engine.parse_draft_payload_editor_text(
+        '{"draft_turtle":"# edited","candidate_cqs":[],"candidate_rules":[],"draft_sparql_tests":[]}'
+    )
+    assert parsed == {
+        "draft_turtle": "# edited",
+        "candidate_cqs": [],
+        "candidate_rules": [],
+        "draft_sparql_tests": [],
+    }
+    with pytest.raises(ValueError, match="草案正文必须是 JSON object"):
+        tab_cq_engine.parse_draft_payload_editor_text("[]")
+    with pytest.raises(ValueError, match="草案正文缺少字段: draft_turtle"):
+        tab_cq_engine.parse_draft_payload_editor_text('{"foo":"bar"}')
 
 
 def test_measure_tab_exposes_compare_mode_and_reasoner_badges() -> None:

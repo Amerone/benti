@@ -22,8 +22,9 @@ class SaveDraftRequest(BaseModel):
     payload: dict[str, Any] = Field(description="Draft payload to persist")
 
 
-class UpdateDraftStatusRequest(BaseModel):
-    draft_status: str = Field(description="New draft review status")
+class UpdateDraftRequest(BaseModel):
+    draft_status: str | None = Field(default=None, description="New draft review status")
+    payload: dict[str, Any] | None = Field(default=None, description="Replacement draft payload")
 
 
 def create_router() -> APIRouter:
@@ -56,12 +57,13 @@ def create_router() -> APIRouter:
         return envelope.ok(result, trace=request.state.trace)
 
     @router.patch("/drafts/{draft_id}")
-    async def update_draft_status(draft_id: str, payload: UpdateDraftStatusRequest, request: Request):
+    async def update_draft_status(draft_id: str, payload: UpdateDraftRequest, request: Request):
         try:
             result = await run_in_threadpool(
-                request.app.state.cq_draft_service.update_status,
+                request.app.state.cq_draft_service.update_draft,
                 draft_id,
-                payload.draft_status,
+                draft_status=payload.draft_status,
+                payload=payload.payload,
             )
         except CQEngineError as exc:
             raise _cq_engine_domain_error(exc) from exc

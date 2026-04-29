@@ -113,6 +113,7 @@ class CQDraftService:
         self.ontology_id = ontology_id
 
     def save_draft(self, payload: dict[str, Any]) -> dict[str, Any]:
+        validate_draft_payload(payload)
         serialized = _serialize_payload(payload)
         data_graph = self.repository.graph(self.ontology_id, "data")
         draft_id = self._next_draft_id(data_graph)
@@ -132,11 +133,34 @@ class CQDraftService:
     def update_status(self, draft_id: str, draft_status: str) -> dict[str, Any]:
         if draft_status not in VALID_DRAFT_STATUSES:
             raise CQEngineError(f"invalid draft status: {draft_status}")
+        return self.update_draft(draft_id, draft_status=draft_status)
+
+    def update_draft(
+        self,
+        draft_id: str,
+        *,
+        draft_status: str | None = None,
+        payload: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        if draft_status is None and payload is None:
+            raise CQEngineError("draft update must include draft_status or payload")
+        if draft_status is not None and draft_status not in VALID_DRAFT_STATUSES:
+            raise CQEngineError(f"invalid draft status: {draft_status}")
+        if draft_status == "published":
+            raise CQEngineError("drafts must be published through the publish endpoint")
         data_graph = self.repository.graph(self.ontology_id, "data")
         draft_node = self._find_draft_node(data_graph, draft_id)
         if draft_node is None:
             raise CQEngineError(f"draft not found: {draft_id}")
-        data_graph.set((draft_node, commission_graph.CTO.draftStatus, Literal(draft_status)))
+        current = self._serialize_draft(data_graph, draft_node)
+        if current["draft_status"] == "published":
+            raise CQEngineError("published draft cannot be modified")
+        if payload is not None:
+            validate_draft_payload(payload)
+        if draft_status is not None:
+            data_graph.set((draft_node, commission_graph.CTO.draftStatus, Literal(draft_status)))
+        if payload is not None:
+            data_graph.set((draft_node, commission_graph.CTO.draftPayload, Literal(_serialize_payload(payload))))
         self._sync()
         return self._serialize_draft(data_graph, draft_node)
 
@@ -148,6 +172,7 @@ class CQDraftService:
         draft = self._serialize_draft(data_graph, draft_node)
         if draft["draft_status"] != "reviewed":
             raise CQEngineError("draft must be reviewed before publish")
+        validate_draft_payload(draft["payload"])
         data_graph.set((draft_node, commission_graph.CTO.draftStatus, Literal("published")))
         self._sync()
         published = self._serialize_draft(data_graph, draft_node)
@@ -297,6 +322,26 @@ def _serialize_payload(payload: dict[str, Any]) -> str:
         return json.dumps(payload, ensure_ascii=False, sort_keys=True)
     except TypeError as exc:
         raise CQEngineError("draft payload must be JSON serializable") from exc
+
+
+def validate_draft_payload(payload: dict[str, Any]) -> None:
+    if not isinstance(payload, dict):
+        raise CQEngineError("draft payload must be a JSON object")
+
+    required_types = {
+        "draft_turtle": str,
+        "candidate_cqs": list,
+        "candidate_rules": list,
+        "draft_sparql_tests": list,
+    }
+    for field, expected_type in required_types.items():
+        if field not in payload:
+            raise CQEngineError(f"draft payload missing required field: {field}")
+        if not isinstance(payload[field], expected_type):
+            expected_name = "list" if expected_type is list else "string"
+            raise CQEngineError(f"draft payload field {field} must be {expected_name}")
+    if not payload["draft_turtle"].strip():
+        raise CQEngineError("draft payload field draft_turtle must not be empty")
 
 
 def _literal_text(data_graph, subject: URIRef, predicate) -> str:

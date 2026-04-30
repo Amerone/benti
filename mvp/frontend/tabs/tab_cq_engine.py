@@ -74,6 +74,9 @@ def render() -> None:
                 trace_title="CQ 草案保存",
             )
             render_envelope_feedback(save_envelope, success_message="CQ 草案已保存。")
+            saved_draft = extract_data(save_envelope, default={}) or {}
+            if save_envelope.get("ok") and saved_draft.get("draft_id"):
+                st.session_state["cq-engine.selected-draft"] = str(saved_draft["draft_id"])
 
     drafts_envelope = api_request("GET", "/cq-engine/drafts", record_trace=False)
     drafts = extract_data(drafts_envelope, default={}) or {}
@@ -92,9 +95,13 @@ def render() -> None:
         render_trace(TRACE_KEY)
         return
 
+    draft_options = [str(item.get("draft_id")) for item in draft_items if item.get("draft_id")]
+    current_selection = st.session_state.get("cq-engine.selected-draft")
+    selected_index = draft_options.index(current_selection) if current_selection in draft_options else len(draft_options) - 1
     selected_draft_id = st.selectbox(
         "查看草案",
-        options=[str(item.get("draft_id")) for item in draft_items if item.get("draft_id")],
+        options=draft_options,
+        index=selected_index,
         key="cq-engine.selected-draft",
     )
     selected_draft = next((item for item in draft_items if item.get("draft_id") == selected_draft_id), None)
@@ -167,9 +174,11 @@ def _render_release_history(items: list[dict[str, Any]], releases_envelope: dict
     if items:
         latest = items[-1]
         files = latest.get("files") or {}
+        quality_gate = latest.get("quality_gate") or {}
         st.caption(
             f"最近发布：{latest.get('release_id', '-')} | 版本：{latest.get('version', '-')} | "
-            f"Manifest：{files.get('manifest', '-')}"
+            f"Manifest：{files.get('manifest', '-')} | 质量门禁：{_quality_gate_status(quality_gate)} | "
+            f"SHACL：{_quality_gate_check_status(quality_gate, 'shacl')}"
         )
     render_dataframe(_release_rows(items), empty_text="暂无发布历史。")
 
@@ -178,6 +187,7 @@ def _release_rows(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
     for item in items:
         files = item.get("files") or {}
+        quality_gate = item.get("quality_gate") or {}
         rows.append(
             {
                 "发布ID": item.get("release_id"),
@@ -185,6 +195,8 @@ def _release_rows(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
                 "草案ID": item.get("draft_id"),
                 "本体": item.get("ontology_id"),
                 "发布时间": item.get("published_at"),
+                "质量门禁": _quality_gate_status(quality_gate),
+                "SHACL": _quality_gate_check_status(quality_gate, "shacl"),
                 "Manifest": files.get("manifest"),
                 "Turtle": files.get("draft_turtle"),
                 "规则": files.get("candidate_rules"),
@@ -192,6 +204,19 @@ def _release_rows(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
             }
         )
     return rows
+
+
+def _quality_gate_status(quality_gate: dict[str, Any]) -> str:
+    if not quality_gate:
+        return "-"
+    return "通过" if quality_gate.get("passed") is True else "未通过"
+
+
+def _quality_gate_check_status(quality_gate: dict[str, Any], category: str) -> str:
+    for check in list(quality_gate.get("checks") or []):
+        if check.get("category") == category:
+            return "通过" if check.get("passed") is True else "未通过"
+    return "-"
 
 
 def _render_payload_editor(selected_draft_id: str, selected_draft: dict[str, Any], payload: dict[str, Any]) -> None:

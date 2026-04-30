@@ -20,7 +20,7 @@ from mvp.api.exceptions import DomainError
 from mvp.api.trace_middleware import TraceMiddleware
 from mvp.core.commission_graph import CommissionGraphService
 from mvp.core.cq_engine import CQDraftService
-from mvp.core import graph, inference, owlready_reasoner, parameters, qa
+from mvp.core import graph, inference, owlready_reasoner, parameters, qa, reasoning_explanation_files
 from mvp.core.llm.base import LLMProvider
 from mvp.core.llm.factory import get_provider
 from mvp.core.ontology_registry import OntologyDescriptor
@@ -266,6 +266,35 @@ def create_app(
             trace=trace,
         )
         return envelope.ok(result, trace=trace)
+
+    @router.post("/ontologies/{ontology_id}/reason/explanation-files")
+    async def ontology_reason_explanation_files(ontology_id: str, payload: ReasonRequest, request: Request):
+        """生成基于最近推理 evidence 的 LLM 解释文件。"""
+
+        trace = request.state.trace
+        _get_descriptor(app.state.repository, ontology_id)
+        turtle_text = await run_in_threadpool(
+            graph.construct_ontology_turtle,
+            ontology_id,
+            repository=app.state.repository,
+            trace=trace,
+        )
+        result = await run_in_threadpool(
+            owlready_reasoner.load_and_reason,
+            ontology_id,
+            turtle_text,
+            run_pellet=True,
+            force=payload.force,
+            trace=trace,
+        )
+        files = await run_in_threadpool(
+            reasoning_explanation_files.build_explanation_files,
+            ontology_id,
+            result,
+            provider=app.state.llm_provider,
+            trace=trace,
+        )
+        return envelope.ok(files, trace=trace)
 
     @router.post("/ontologies/{ontology_id}/activate")
     async def activate_ontology(ontology_id: str, request: Request):

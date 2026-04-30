@@ -1,0 +1,87 @@
+@prefix cto: <https://hifar.top/cto#> .
+@prefix sh: <http://www.w3.org/ns/shacl#> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+
+cto:CommissionOrderShape
+    a sh:NodeShape ;
+    sh:targetClass cto:CommissionOrder ;
+    sh:property [
+        sh:path cto:orderNo ;
+        sh:datatype xsd:string ;
+        sh:minCount 1 ;
+    ] ;
+    sh:property [
+        sh:path cto:hasTestProject ;
+        sh:class cto:TestProject ;
+        sh:minCount 1 ;
+    ] .
+
+cto:TestProjectShape
+    a sh:NodeShape ;
+    sh:targetClass cto:TestProject ;
+    sh:property [
+        sh:path cto:localId ;
+        sh:datatype xsd:string ;
+        sh:minCount 1 ;
+    ] ;
+    sh:property [
+        sh:path cto:decomposesToTask ;
+        sh:class cto:TestTask ;
+        sh:minCount 1 ;
+    ] .
+
+cto:TestTaskShape
+    a sh:NodeShape ;
+    sh:targetClass cto:TestTask ;
+    sh:property [
+        sh:path cto:localId ;
+        sh:datatype xsd:string ;
+        sh:minCount 1 ;
+    ] ;
+    sh:property [
+        sh:path cto:taskStatus ;
+        sh:datatype xsd:string ;
+        sh:minCount 1 ;
+    ] .
+
+cto:TestDataRecordShape
+    a sh:NodeShape ;
+    sh:targetClass cto:TestDataRecord ;
+    sh:property [
+        sh:path cto:localId ;
+        sh:datatype xsd:string ;
+        sh:minCount 1 ;
+    ] ;
+    sh:property [
+        sh:path cto:measuredValue ;
+        sh:datatype xsd:decimal ;
+        sh:minCount 1 ;
+    ] .
+
+cto:JudgementResultShape
+    a sh:NodeShape ;
+    sh:targetClass cto:JudgementResult ;
+    sh:property [
+        sh:path cto:resultStatus ;
+        sh:datatype xsd:string ;
+        sh:minCount 1 ;
+    ] .
+
+cto:ReevaluationImpactShape
+    a sh:NodeShape ;
+    sh:targetClass cto:ReevaluationImpact ;
+    sh:property [
+        sh:path cto:previousResult ;
+        sh:class cto:JudgementResult ;
+        sh:minCount 1 ;
+    ] ;
+    sh:property [
+        sh:path cto:newResult ;
+        sh:class cto:JudgementResult ;
+        sh:minCount 1 ;
+    ] ;
+    sh:property [
+        sh:path cto:impactsTask ;
+        sh:class cto:TestTask ;
+        sh:minCount 1 ;
+    ] .

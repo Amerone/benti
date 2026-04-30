@@ -26,6 +26,21 @@ class UnavailableProvider:
         return None
 
 
+class AvailableProvider:
+    name = "test-llm"
+    default_model = "test-model"
+
+    def __init__(self) -> None:
+        self.prompts: list[str] = []
+
+    def available(self) -> bool:
+        return True
+
+    def chat(self, prompt: str, *, max_tokens: int = 400, temperature: float = 0.2) -> str | None:
+        self.prompts.append(prompt)
+        return "LLM 生成的推理解释"
+
+
 @pytest.fixture
 def repository() -> graph.BusinessGraphRepository:
     repo = graph.BusinessGraphRepository()
@@ -542,6 +557,50 @@ async def test_reason_endpoint_is_concurrency_safe_via_reasoner_cache(
     assert all(response.status_code == 200 for response in responses)
     assert {response.json()["data"]["pellet_status"] for response in responses} == {"success"}
     assert calls["count"] == 1
+
+
+@pytest.mark.asyncio
+async def test_reason_explanation_files_endpoint_uses_llm_provider(
+    repository: graph.BusinessGraphRepository,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from mvp.api.main import create_app
+
+    provider = AvailableProvider()
+    app = create_app(repository=repository, llm_provider=provider)
+
+    monkeypatch.setattr("mvp.api.main.graph.construct_ontology_turtle", lambda *args, **kwargs: "@prefix : <urn:test#> .")
+    monkeypatch.setattr(
+        "mvp.api.main.owlready_reasoner.load_and_reason",
+        lambda *args, **kwargs: {
+            "ontology_id": "manufacturing-trial",
+            "reasoner": "pellet",
+            "pellet_status": "success",
+            "pellet_ms": 9,
+            "classes": [{"name": "Measurement"}],
+            "individuals": [],
+            "object_properties": [],
+            "data_properties": [],
+            "cache_hit": False,
+        },
+    )
+
+    async with AsyncClient(
+        transport=ASGITransport(app=app, raise_app_exceptions=False),
+        base_url="http://testserver",
+    ) as async_client:
+        response = await async_client.post(
+            "/api/v1/ontologies/manufacturing-trial/reason/explanation-files",
+            json={"force": False},
+        )
+
+    assert response.status_code == 200
+    payload = response.json()["data"]
+    assert payload["source"] == "test-llm"
+    assert payload["files"][0]["filename"] == "reasoning-explanation.md"
+    assert "LLM 生成的推理解释" in payload["files"][0]["content"]
+    assert payload["files"][1]["filename"] == "reasoning-evidence.json"
+    assert provider.prompts
 
 
 @pytest.mark.asyncio

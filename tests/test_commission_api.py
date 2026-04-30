@@ -60,6 +60,24 @@ def _order_payload(order_no: str, project_id: str, task_id: str, *, project_name
     }
 
 
+def _reviewable_draft_turtle(order_no: str = "CO-EDIT-001", project_id: str = "P-EDIT-001", task_id: str = "T-EDIT-001") -> str:
+    return f"""# ontology-id: commission-testing
+@prefix cto: <https://hifar.top/cto#> .
+
+<https://hifar.top/cto/individual/order/{order_no}> a cto:CommissionOrder ;
+    cto:orderNo "{order_no}" ;
+    cto:hasTestProject <https://hifar.top/cto/individual/project/{project_id}> .
+
+<https://hifar.top/cto/individual/project/{project_id}> a cto:TestProject ;
+    cto:localId "{project_id}" ;
+    cto:decomposesToTask <https://hifar.top/cto/individual/task/{task_id}> .
+
+<https://hifar.top/cto/individual/task/{task_id}> a cto:TestTask ;
+    cto:localId "{task_id}" ;
+    cto:taskStatus "Draft" .
+"""
+
+
 def test_commission_demo_reset_and_upgrade_flow():
     with _client() as client:
         reset_response = client.post("/api/v1/commission/demo/reset")
@@ -239,7 +257,8 @@ def test_cq_engine_draft_payload_can_be_edited_before_review_and_publish():
         created = client.post("/api/v1/cq-engine/drafts", json={"payload": generated}).json()["data"]
         edited_payload = {
             **generated,
-            "draft_turtle": "# edited ontology sketch\nCommissionOrder -> hasAuditTrail -> CQDraft",
+            "candidate_cqs": [{"id": "CQ-EDIT-001", "question": "Edited CQ remains traceable"}],
+            "draft_turtle": _reviewable_draft_turtle(),
             "draft_sparql_tests": ["CQ-EDIT-001"],
         }
 
@@ -252,7 +271,7 @@ def test_cq_engine_draft_payload_can_be_edited_before_review_and_publish():
         edited = edit_response.json()["data"]
         assert edited["draft_id"] == created["draft_id"]
         assert edited["draft_status"] == "draft"
-        assert edited["payload"]["draft_turtle"].startswith("# edited ontology sketch")
+        assert edited["payload"]["draft_turtle"].startswith("# ontology-id: commission-testing")
         assert edited["payload"]["draft_sparql_tests"] == ["CQ-EDIT-001"]
 
         listed = client.get("/api/v1/cq-engine/drafts").json()["data"]["items"][0]
@@ -260,7 +279,7 @@ def test_cq_engine_draft_payload_can_be_edited_before_review_and_publish():
 
         client.patch(f"/api/v1/cq-engine/drafts/{created['draft_id']}", json={"draft_status": "reviewed"})
         published = client.post(f"/api/v1/cq-engine/drafts/{created['draft_id']}/publish").json()["data"]
-        assert published["exports"]["draft_turtle"].startswith("# edited ontology sketch")
+        assert published["exports"]["draft_turtle"].startswith("# ontology-id: commission-testing")
         assert published["exports"]["draft_sparql_tests"] == ["CQ-EDIT-001"]
 
 
@@ -625,6 +644,12 @@ def test_cq_engine_publish_requires_reviewed_and_returns_export_artifacts():
         assert published["exports"]["ontology_id"] == "commission-testing"
         assert published["exports"]["draft_turtle"].startswith("# ontology-id: commission-testing")
         assert published["exports"]["draft_sparql_tests"] == ["CQ-CT-001", "CQ-CT-004"]
+        assert published["release"]["quality_gate"]["passed"] is True
+        assert [check["category"] for check in published["release"]["quality_gate"]["checks"]] == [
+            "metadata",
+            "turtle",
+            "shacl",
+        ]
         assert [rule["id"] for rule in published["exports"]["candidate_rules"]] == [
             "decompose_project_to_task",
             "judge_less_equal_threshold",
@@ -677,6 +702,7 @@ def test_cq_engine_publish_writes_release_files_and_lists_history(tmp_path):
         assert release["version"] == "v1"
         assert release["draft_id"] == created["draft_id"]
         assert release["ontology_id"] == "commission-testing"
+        assert release["quality_gate"]["passed"] is True
         assert set(release["files"]) == {
             "manifest",
             "draft_turtle",
@@ -711,10 +737,10 @@ def test_cq_engine_publish_sync_failure_rolls_back_state_and_release_files(tmp_p
     ).state.cq_draft_service
     service.release_root = tmp_path / "cq-releases"
     generated = {
-        "draft_turtle": "# ontology-id: commission-testing\n",
-        "candidate_cqs": [],
+        "draft_turtle": _reviewable_draft_turtle("CO-SYNC-001", "P-SYNC-001", "T-SYNC-001"),
+        "candidate_cqs": [{"id": "CQ-CT-900", "question": "Reviewable sync failure draft"}],
         "candidate_rules": [],
-        "draft_sparql_tests": [],
+        "draft_sparql_tests": ["CQ-CT-900"],
     }
     created = service.save_draft(generated)
     service.update_draft(created["draft_id"], draft_status="reviewed")
@@ -745,10 +771,10 @@ def test_cq_engine_publish_release_write_failure_does_not_mutate_status(tmp_path
     ).state.cq_draft_service
     service.release_root = tmp_path / "cq-releases"
     generated = {
-        "draft_turtle": "# ontology-id: commission-testing\n",
-        "candidate_cqs": [],
+        "draft_turtle": _reviewable_draft_turtle("CO-WRITE-001", "P-WRITE-001", "T-WRITE-001"),
+        "candidate_cqs": [{"id": "CQ-CT-901", "question": "Reviewable write failure draft"}],
         "candidate_rules": [],
-        "draft_sparql_tests": [],
+        "draft_sparql_tests": ["CQ-CT-901"],
     }
     created = service.save_draft(generated)
     service.update_draft(created["draft_id"], draft_status="reviewed")
@@ -764,6 +790,34 @@ def test_cq_engine_publish_release_write_failure_does_not_mutate_status(tmp_path
         pass
     else:
         raise AssertionError("publish should surface release write failure")
+
+    listed = service.list_drafts()["items"][0]
+    assert listed["draft_status"] == "reviewed"
+    assert service.list_releases() == {"items": [], "total": 0}
+
+
+def test_cq_engine_publish_blocks_untraceable_sparql_tests_without_release(tmp_path):
+    repository = BusinessGraphRepository()
+    service = create_app(
+        repository=repository,
+        llm_provider=UnavailableProvider(),
+    ).state.cq_draft_service
+    service.release_root = tmp_path / "cq-releases"
+    generated = {
+        "draft_turtle": _reviewable_draft_turtle("CO-TRACE-001", "P-TRACE-001", "T-TRACE-001"),
+        "candidate_cqs": [{"id": "CQ-CT-902", "question": "Traceable CQ"}],
+        "candidate_rules": [],
+        "draft_sparql_tests": ["CQ-CT-MISSING"],
+    }
+    created = service.save_draft(generated)
+    service.update_draft(created["draft_id"], draft_status="reviewed")
+
+    try:
+        service.publish_draft(created["draft_id"])
+    except CQEngineError as exc:
+        assert "draft SPARQL test references unknown candidate CQ: CQ-CT-MISSING" in str(exc)
+    else:
+        raise AssertionError("publish should block untraceable SPARQL tests")
 
     listed = service.list_drafts()["items"][0]
     assert listed["draft_status"] == "reviewed"

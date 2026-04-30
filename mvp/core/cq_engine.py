@@ -14,6 +14,7 @@ from rdflib import Literal, URIRef
 from rdflib.namespace import RDF
 
 from mvp.core import commission_graph, graph
+from mvp.core.cq_workflow import CQWorkflowError, validate_draft_quality_gate
 from mvp.core.graph import BusinessGraphRepository
 
 
@@ -183,8 +184,12 @@ class CQDraftService:
         if draft["draft_status"] != "reviewed":
             raise CQEngineError("draft must be reviewed before publish")
         validate_draft_payload(draft["payload"])
+        try:
+            quality_gate = validate_draft_quality_gate(draft["payload"])
+        except CQWorkflowError as exc:
+            raise CQEngineError(str(exc)) from exc
         exports = self._export_payload(draft["payload"])
-        release = self._build_release_manifest(draft["draft_id"], exports)
+        release = self._build_release_manifest(draft["draft_id"], exports, quality_gate)
         self._write_release(release, exports)
         data_graph.set((draft_node, commission_graph.CTO.draftStatus, Literal("published")))
         try:
@@ -252,7 +257,12 @@ class CQDraftService:
     def _sync(self) -> None:
         self.repository._sync_graph_to_remote(self.ontology_id, "data")
 
-    def _build_release_manifest(self, draft_id: str, exports: dict[str, Any]) -> dict[str, Any]:
+    def _build_release_manifest(
+        self,
+        draft_id: str,
+        exports: dict[str, Any],
+        quality_gate: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
         release_number = self._next_release_number()
         release_id = f"CQR-{release_number:03d}"
         release_dir = self.release_root / self.ontology_id / release_id
@@ -267,6 +277,7 @@ class CQDraftService:
             "draft_id": draft_id,
             "ontology_id": self.ontology_id,
             "published_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+            "quality_gate": quality_gate or {"passed": False, "checks": []},
             "files": {
                 "manifest": _display_path(manifest_path),
                 "draft_turtle": _display_path(turtle_path),

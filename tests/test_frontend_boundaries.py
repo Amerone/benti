@@ -304,6 +304,9 @@ def test_cq_page_exposes_reviewed_draft_publish_action() -> None:
     assert "render_envelope_feedback(releases_envelope" in text
     assert "发布历史" in text
     assert "最近发布" in text
+    assert "质量门禁" in text
+    assert "SHACL" in text
+    assert "quality_gate" in text
     assert "release_id" in text
     assert "exports" in text
     assert "draft_turtle" in text
@@ -319,6 +322,16 @@ def test_cq_page_exposes_reviewed_draft_publish_action() -> None:
         "candidate_rules": [],
         "draft_sparql_tests": [],
     }
+    quality_gate = {
+        "passed": True,
+        "checks": [
+            {"category": "metadata", "passed": True},
+            {"category": "turtle", "passed": True},
+            {"category": "shacl", "passed": True},
+        ],
+    }
+    assert tab_cq_engine._quality_gate_status(quality_gate) == "通过"
+    assert tab_cq_engine._quality_gate_check_status(quality_gate, "shacl") == "通过"
     with pytest.raises(ValueError, match="草案正文必须是 JSON object"):
         tab_cq_engine.parse_draft_payload_editor_text("[]")
     with pytest.raises(ValueError, match="草案正文缺少字段: draft_turtle"):
@@ -332,6 +345,18 @@ def test_measure_tab_exposes_compare_mode_and_reasoner_badges() -> None:
     assert "enable_swrl" in text
     assert "Pellet-SWRL" in text
     assert "Python" in text
+
+
+def test_reasoning_tab_exposes_llm_explanation_file_generation() -> None:
+    """推理页应调用 API 生成 LLM 解释文件，并以下载文件形式暴露。"""
+
+    text = Path("mvp/frontend/tabs/tab_pellet.py").read_text(encoding="utf-8")
+    assert "/reason/explanation-files" in text
+    assert "LLM 解释文件" in text
+    assert "reasoning-explanation.md" in text
+    assert "reasoning-evidence.json" in text
+    assert "download_button" in text
+    assert "timeout=60" in text
 
 
 def test_measure_tab_localizes_form_labels_and_table_headers() -> None:

@@ -184,13 +184,15 @@ CO-2024-001
 
 - `mvp/ontology/commission-testing.ttl`
 - `docs/cq/commission-testing-cqs.md`
+- `docs/cq/cq-process.md`
+- `mvp/shapes/commission-testing-shacl.ttl`
 - `mvp/rules/commission-testing.yml`
 - `mvp/data/commission-testing-demo.json`
 
 验证命令：
 
 ```powershell
-python -m pytest tests/test_commission_reasoning.py tests/test_commission_graph.py tests/test_commission_cq_engine.py tests/test_commission_api.py -q
+python -m pytest tests/test_cq_workflow.py tests/test_commission_reasoning.py tests/test_commission_graph.py tests/test_commission_cq_engine.py tests/test_commission_api.py -q
 python -m pytest tests/test_commission_cq_integration.py -q -rs
 ```
 

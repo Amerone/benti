@@ -280,6 +280,7 @@ def _render_story(order: dict[str, Any], impact: dict[str, Any]) -> None:
             f"RCS_MEAN 在任务 {flipped_rcs['任务']} 上由 {flipped_rcs['旧结果']} 翻转为 {flipped_rcs['新结果']}，"
             f"任务状态变为 {flipped_rcs['任务状态']}。"
         )
+    _render_reasoning_explanation(projects, impact_rows)
 
 
 def _project_rows(projects: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -337,3 +338,35 @@ def _impact_rows(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
             }
         )
     return rows
+
+
+def _render_reasoning_explanation(projects: list[dict[str, Any]], impact_rows: list[dict[str, Any]]) -> None:
+    item_rows = _item_rows(projects)
+    reasoning_rows: list[dict[str, Any]] = []
+    for row in item_rows:
+        reasoning_rows.append(
+            {
+                "推理流程": "测试数据 -> 标准阈值 -> 判定结果",
+                "推理方向": f"{row.get('任务')} / {row.get('测试项编码')} 按标准版本 {row.get('标准版本')} 正向判定",
+                "输入": f"测量值 {row.get('测量值')}{'' if row.get('单位') == '-' else row.get('单位')}",
+                "规则": str(row.get("判定依据") or "-"),
+                "输出": str(row.get("结果") or "-"),
+            }
+        )
+    for row in impact_rows:
+        reasoning_rows.append(
+            {
+                "推理流程": "旧标准结果 -> 新标准重判 -> 标准升级影响 -> 任务状态",
+                "推理方向": f"{row.get('任务')} / {row.get('测试项编码')} 从 {row.get('旧标准')} 追踪到 {row.get('新标准')}",
+                "输入": f"{row.get('旧结果')} -> {row.get('新结果')}",
+                "规则": "结果翻转则任务进入 NeedsReview；未翻转则保持 Completed。",
+                "输出": str(row.get("任务状态") or "-"),
+            }
+        )
+
+    st.markdown("**推理流程与结果说明**")
+    st.caption(
+        "推理方向：委托单 -> 试验任务 -> 测试数据 -> 标准阈值 -> 判定结果 -> 标准升级重判 -> 任务状态。"
+    )
+    st.caption("怎么得出结果：页面把每条测量值、命中的标准阈值、旧/新判定和任务状态变化串成可追溯链路。")
+    render_dataframe(reasoning_rows, empty_text="暂无推理流程。")

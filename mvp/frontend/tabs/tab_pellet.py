@@ -20,6 +20,7 @@ from mvp.frontend.ui_utils import (
 )
 
 TRACE_KEY = "tab-pellet"
+EXPLANATION_TRACE_KEY = "tab-pellet-explanation"
 
 
 def render(*, ontology_id: str) -> None:
@@ -76,4 +77,47 @@ def render(*, ontology_id: str) -> None:
     else:
         st.info("点击“执行 Pellet”后，这里会显示最近一次推理结果。")
 
+    st.markdown("**LLM 解释文件**")
+    st.caption(
+        "LLM 只解释后端 evidence，不参与 Pass/Fail 判定；"
+        "生成 reasoning-explanation.md 与 reasoning-evidence.json 供评审或归档。"
+    )
+    if st.button("生成 LLM 解释文件", width="stretch"):
+        envelope = api_request(
+            "POST",
+            f"/ontologies/{ontology_id}/reason/explanation-files",
+            json_body={"force": force},
+            timeout=60,
+            trace_key=EXPLANATION_TRACE_KEY,
+            trace_title="LLM 推理解释文件",
+        )
+        render_envelope_feedback(envelope, success_message="LLM 解释文件已生成。")
+
+    explanation_envelope = get_last_trace(EXPLANATION_TRACE_KEY) or {}
+    _render_explanation_files(explanation_envelope)
+
     render_trace(TRACE_KEY)
+    render_trace(EXPLANATION_TRACE_KEY)
+
+
+def _render_explanation_files(envelope: dict[str, object]) -> None:
+    if not envelope:
+        st.info("点击“生成 LLM 解释文件”后，这里会出现 Markdown 与 evidence JSON 下载。")
+        return
+    if not envelope.get("ok"):
+        render_envelope_feedback(envelope)
+        return
+
+    data = extract_data(envelope, default={}) or {}
+    st.caption(f"解释来源：{data.get('source', '-')} | Provider：{data.get('provider', '-')}")
+    for file_item in list(data.get("files") or []):
+        filename = str(file_item.get("filename") or "reasoning-explanation.md")
+        content = str(file_item.get("content") or "")
+        content_type = str(file_item.get("content_type") or "text/plain; charset=utf-8")
+        st.download_button(
+            label=f"下载 {filename}",
+            data=content,
+            file_name=filename,
+            mime=content_type,
+            width="stretch",
+        )

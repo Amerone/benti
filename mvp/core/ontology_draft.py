@@ -202,11 +202,28 @@ def _template_payload(
         "candidate_rules": [dict(item) for item in _TEMPLATE_CANDIDATE_RULES],
         "draft_turtle": (
             "# ontology-id: commission-testing\n"
-            "# draft-only sketch for review, not formal OWL/Turtle\n"
-            "CommissionOrder -> hasProduct -> Product\n"
-            "CommissionOrder -> hasTestProject -> TestProject\n"
-            "TestProject -> decomposesToTask -> TestTask\n"
-            "StandardVersion -> supersedesStandard -> StandardVersion\n"
+            "@prefix cto: <https://hifar.top/cto#> .\n"
+            "@prefix owl: <http://www.w3.org/2002/07/owl#> .\n"
+            "@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .\n"
+            "@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .\n\n"
+            "cto:CommissionOrder a owl:Class ; rdfs:label \"Commission order\" .\n"
+            "cto:Product a owl:Class ; rdfs:label \"Product\" .\n"
+            "cto:TestProject a owl:Class ; rdfs:label \"Test project\" .\n"
+            "cto:TestTask a owl:Class ; rdfs:label \"Test task\" .\n"
+            "cto:StandardVersion a owl:Class ; rdfs:label \"Standard version\" .\n\n"
+            "cto:hasProduct a owl:ObjectProperty ; rdfs:domain cto:CommissionOrder ; rdfs:range cto:Product .\n"
+            "cto:hasTestProject a owl:ObjectProperty ; rdfs:domain cto:CommissionOrder ; rdfs:range cto:TestProject .\n"
+            "cto:decomposesToTask a owl:ObjectProperty ; rdfs:domain cto:TestProject ; rdfs:range cto:TestTask .\n"
+            "cto:supersedesStandard a owl:ObjectProperty ; rdfs:domain cto:StandardVersion ; rdfs:range cto:StandardVersion .\n\n"
+            "<https://hifar.top/cto/individual/order/CO-DRAFT-001> a cto:CommissionOrder ;\n"
+            "    cto:orderNo \"CO-DRAFT-001\" ;\n"
+            "    cto:hasTestProject <https://hifar.top/cto/individual/project/P-DRAFT-001> .\n\n"
+            "<https://hifar.top/cto/individual/project/P-DRAFT-001> a cto:TestProject ;\n"
+            "    cto:localId \"P-DRAFT-001\" ;\n"
+            "    cto:decomposesToTask <https://hifar.top/cto/individual/task/T-DRAFT-001> .\n\n"
+            "<https://hifar.top/cto/individual/task/T-DRAFT-001> a cto:TestTask ;\n"
+            "    cto:localId \"T-DRAFT-001\" ;\n"
+            "    cto:taskStatus \"Draft\" .\n"
         ),
         "draft_sparql_tests": ["CQ-CT-001", "CQ-CT-004"],
         "source_trace": source_trace,

@@ -220,6 +220,7 @@ def test_template_only_generation_returns_reviewable_deterministic_draft():
         "mark_task_needs_review_on_flip",
     }
     assert "# ontology-id: commission-testing\n" in payload["draft_turtle"]
+    assert "@prefix cto:" in payload["draft_turtle"]
     assert "CommissionOrder" in payload["draft_turtle"]
     assert "decomposesToTask" in payload["draft_turtle"]
     assert "supersedesStandard" in payload["draft_turtle"]

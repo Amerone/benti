@@ -1,11 +1,15 @@
 from __future__ import annotations
 
+import json
+from pathlib import Path
+
 from fastapi.testclient import TestClient
 from rdflib import Literal
 from rdflib.namespace import RDF
 
 from mvp.api.main import create_app
 from mvp.core import commission_graph
+from mvp.core.cq_engine import CQDraftService, CQEngineError
 from mvp.core.graph import BusinessGraphRepository
 from mvp.core.llm.base import LLMProvider
 
@@ -631,3 +635,285 @@ def test_cq_engine_publish_requires_reviewed_and_returns_export_artifacts():
         assert listing[0]["draft_status"] == "published"
         assert listing[0]["exports"]["draft_turtle"].startswith("# ontology-id: commission-testing")
         assert listing[0]["exports"]["draft_sparql_tests"] == ["CQ-CT-001", "CQ-CT-004"]
+
+
+def test_cq_engine_default_release_root_is_repo_runtime_dir(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+
+    service = CQDraftService(repository=BusinessGraphRepository())
+
+    repo_root = Path(__file__).resolve().parents[1]
+    assert service.release_root.resolve() == repo_root / "runtime" / "cq-releases"
+
+
+def test_cq_engine_relative_release_root_override_is_resolved_on_init(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+
+    service = CQDraftService(repository=BusinessGraphRepository(), release_root="custom-releases")
+    monkeypatch.chdir(Path(__file__).resolve().parents[1])
+
+    assert service.release_root == tmp_path / "custom-releases"
+
+
+def test_cq_engine_publish_writes_release_files_and_lists_history(tmp_path):
+    with _client() as client:
+        client.app.state.cq_draft_service.release_root = tmp_path / "cq-releases"
+        generated = client.post(
+            "/api/v1/cq-engine/generate",
+            json={
+                "business_text": "Commission orders decompose into tasks and track standard upgrades.",
+                "generation_mode": "template_only",
+            },
+        ).json()["data"]
+        created = client.post("/api/v1/cq-engine/drafts", json={"payload": generated}).json()["data"]
+        client.patch(f"/api/v1/cq-engine/drafts/{created['draft_id']}", json={"draft_status": "reviewed"})
+
+        publish_response = client.post(f"/api/v1/cq-engine/drafts/{created['draft_id']}/publish")
+
+        assert publish_response.status_code == 200
+        published = publish_response.json()["data"]
+        release = published["release"]
+        assert release["release_id"] == "CQR-001"
+        assert release["version"] == "v1"
+        assert release["draft_id"] == created["draft_id"]
+        assert release["ontology_id"] == "commission-testing"
+        assert set(release["files"]) == {
+            "manifest",
+            "draft_turtle",
+            "candidate_rules",
+            "draft_sparql_tests",
+        }
+
+        manifest_path = Path(release["files"]["manifest"])
+        turtle_path = Path(release["files"]["draft_turtle"])
+        rules_path = Path(release["files"]["candidate_rules"])
+        sparql_path = Path(release["files"]["draft_sparql_tests"])
+        assert manifest_path.exists()
+        assert turtle_path.read_text(encoding="utf-8") == generated["draft_turtle"]
+        assert json.loads(rules_path.read_text(encoding="utf-8")) == generated["candidate_rules"]
+        assert json.loads(sparql_path.read_text(encoding="utf-8")) == generated["draft_sparql_tests"]
+
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        assert manifest == release
+
+        releases_response = client.get("/api/v1/cq-engine/releases")
+
+        assert releases_response.status_code == 200
+        releases = releases_response.json()["data"]
+        assert releases == {"items": [release], "total": 1}
+
+
+def test_cq_engine_publish_sync_failure_rolls_back_state_and_release_files(tmp_path):
+    repository = BusinessGraphRepository()
+    service = create_app(
+        repository=repository,
+        llm_provider=UnavailableProvider(),
+    ).state.cq_draft_service
+    service.release_root = tmp_path / "cq-releases"
+    generated = {
+        "draft_turtle": "# ontology-id: commission-testing\n",
+        "candidate_cqs": [],
+        "candidate_rules": [],
+        "draft_sparql_tests": [],
+    }
+    created = service.save_draft(generated)
+    service.update_draft(created["draft_id"], draft_status="reviewed")
+
+    def fail_sync() -> None:
+        raise RuntimeError("remote sync failed")
+
+    service._sync = fail_sync
+
+    try:
+        service.publish_draft(created["draft_id"])
+    except RuntimeError:
+        pass
+    else:
+        raise AssertionError("publish should surface sync failure")
+
+    listed = service.list_drafts()["items"][0]
+    assert listed["draft_status"] == "reviewed"
+    assert service.list_releases() == {"items": [], "total": 0}
+    assert not list((tmp_path / "cq-releases").glob("commission-testing/CQR-*/manifest.json"))
+
+
+def test_cq_engine_publish_release_write_failure_does_not_mutate_status(tmp_path):
+    repository = BusinessGraphRepository()
+    service = create_app(
+        repository=repository,
+        llm_provider=UnavailableProvider(),
+    ).state.cq_draft_service
+    service.release_root = tmp_path / "cq-releases"
+    generated = {
+        "draft_turtle": "# ontology-id: commission-testing\n",
+        "candidate_cqs": [],
+        "candidate_rules": [],
+        "draft_sparql_tests": [],
+    }
+    created = service.save_draft(generated)
+    service.update_draft(created["draft_id"], draft_status="reviewed")
+
+    def fail_write(release: dict, exports: dict) -> None:
+        raise CQEngineError("disk full")
+
+    service._write_release = fail_write
+
+    try:
+        service.publish_draft(created["draft_id"])
+    except CQEngineError:
+        pass
+    else:
+        raise AssertionError("publish should surface release write failure")
+
+    listed = service.list_drafts()["items"][0]
+    assert listed["draft_status"] == "reviewed"
+    assert service.list_releases() == {"items": [], "total": 0}
+
+
+def test_cq_engine_publish_skips_incomplete_release_directories(tmp_path):
+    (tmp_path / "cq-releases" / "commission-testing" / "CQR-001").mkdir(parents=True)
+    with _client() as client:
+        client.app.state.cq_draft_service.release_root = tmp_path / "cq-releases"
+        generated = client.post(
+            "/api/v1/cq-engine/generate",
+            json={
+                "business_text": "Commission orders decompose into tasks and track standard upgrades.",
+                "generation_mode": "template_only",
+            },
+        ).json()["data"]
+        created = client.post("/api/v1/cq-engine/drafts", json={"payload": generated}).json()["data"]
+        client.patch(f"/api/v1/cq-engine/drafts/{created['draft_id']}", json={"draft_status": "reviewed"})
+
+        publish_response = client.post(f"/api/v1/cq-engine/drafts/{created['draft_id']}/publish")
+
+        assert publish_response.status_code == 200
+        release = publish_response.json()["data"]["release"]
+        assert release["release_id"] == "CQR-002"
+        assert Path(release["files"]["manifest"]).exists()
+
+
+def test_cq_engine_publish_continues_after_corrupt_historical_manifest(tmp_path):
+    release_root = tmp_path / "cq-releases"
+    release_dir = release_root / "commission-testing" / "CQR-001"
+    release_dir.mkdir(parents=True)
+    (release_dir / "manifest.json").write_text("{bad-json", encoding="utf-8")
+
+    with _client() as client:
+        client.app.state.cq_draft_service.release_root = release_root
+        generated = client.post(
+            "/api/v1/cq-engine/generate",
+            json={
+                "business_text": "Commission orders decompose into tasks and track standard upgrades.",
+                "generation_mode": "template_only",
+            },
+        ).json()["data"]
+        created = client.post("/api/v1/cq-engine/drafts", json={"payload": generated}).json()["data"]
+        client.patch(f"/api/v1/cq-engine/drafts/{created['draft_id']}", json={"draft_status": "reviewed"})
+
+        publish_response = client.post(f"/api/v1/cq-engine/drafts/{created['draft_id']}/publish")
+
+        assert publish_response.status_code == 200
+        release = publish_response.json()["data"]["release"]
+        assert release["release_id"] == "CQR-002"
+        assert Path(release["files"]["manifest"]).exists()
+
+
+def test_cq_engine_release_history_sorts_by_numeric_release_id(tmp_path):
+    release_root = tmp_path / "cq-releases"
+    ontology_root = release_root / "commission-testing"
+    for release_id in ["CQR-099", "CQR-1000", "CQR-101"]:
+        release_dir = ontology_root / release_id
+        release_dir.mkdir(parents=True)
+        (release_dir / "manifest.json").write_text(
+            json.dumps(
+                {
+                    "release_id": release_id,
+                    "version": f"v{release_id.rsplit('-', 1)[1]}",
+                        "draft_id": "CQD-001",
+                        "ontology_id": "commission-testing",
+                        "published_at": "2026-04-30T00:00:00Z",
+                        "files": {
+                            "manifest": f"cq-releases/commission-testing/{release_id}/manifest.json",
+                            "draft_turtle": f"cq-releases/commission-testing/{release_id}/draft.ttl",
+                            "candidate_rules": f"cq-releases/commission-testing/{release_id}/candidate-rules.json",
+                            "draft_sparql_tests": f"cq-releases/commission-testing/{release_id}/sparql-tests.json",
+                        },
+                    }
+                ),
+                encoding="utf-8",
+        )
+
+    service = CQDraftService(repository=BusinessGraphRepository(), release_root=release_root)
+
+    releases = service.list_releases()["items"]
+    assert [item["release_id"] for item in releases] == ["CQR-099", "CQR-101", "CQR-1000"]
+
+
+def test_cq_engine_releases_endpoint_maps_bad_manifest_to_domain_error(tmp_path):
+    release_dir = tmp_path / "cq-releases" / "commission-testing" / "CQR-001"
+    release_dir.mkdir(parents=True)
+    (release_dir / "manifest.json").write_text("{bad-json", encoding="utf-8")
+
+    with _client() as client:
+        client.app.state.cq_draft_service.release_root = tmp_path / "cq-releases"
+
+        response = client.get("/api/v1/cq-engine/releases")
+
+        assert response.status_code == 400
+        assert response.json()["error"]["code"] == "CQ_ENGINE_ERROR"
+
+
+def test_cq_engine_releases_endpoint_rejects_incomplete_manifest_object(tmp_path):
+    release_dir = tmp_path / "cq-releases" / "commission-testing" / "CQR-001"
+    release_dir.mkdir(parents=True)
+    (release_dir / "manifest.json").write_text(
+        json.dumps({"draft_id": "CQD-001"}),
+        encoding="utf-8",
+    )
+
+    with _client() as client:
+        client.app.state.cq_draft_service.release_root = tmp_path / "cq-releases"
+
+        response = client.get("/api/v1/cq-engine/releases")
+
+        assert response.status_code == 400
+        assert response.json()["error"]["code"] == "CQ_ENGINE_ERROR"
+
+
+def test_cq_engine_releases_endpoint_rejects_non_object_manifest(tmp_path):
+    release_dir = tmp_path / "cq-releases" / "commission-testing" / "CQR-001"
+    release_dir.mkdir(parents=True)
+    (release_dir / "manifest.json").write_text(json.dumps([]), encoding="utf-8")
+
+    with _client() as client:
+        client.app.state.cq_draft_service.release_root = tmp_path / "cq-releases"
+
+        response = client.get("/api/v1/cq-engine/releases")
+
+        assert response.status_code == 400
+        assert response.json()["error"]["code"] == "CQ_ENGINE_ERROR"
+
+
+def test_cq_engine_draft_listing_survives_bad_release_manifest(tmp_path):
+    with _client() as client:
+        client.app.state.cq_draft_service.release_root = tmp_path / "cq-releases"
+        generated = client.post(
+            "/api/v1/cq-engine/generate",
+            json={
+                "business_text": "Commission orders decompose into tasks and track standard upgrades.",
+                "generation_mode": "template_only",
+            },
+        ).json()["data"]
+        created = client.post("/api/v1/cq-engine/drafts", json={"payload": generated}).json()["data"]
+        client.patch(f"/api/v1/cq-engine/drafts/{created['draft_id']}", json={"draft_status": "reviewed"})
+        published = client.post(f"/api/v1/cq-engine/drafts/{created['draft_id']}/publish").json()["data"]
+        manifest_path = Path(published["release"]["files"]["manifest"])
+        manifest_path.write_text("{bad-json", encoding="utf-8")
+
+        response = client.get("/api/v1/cq-engine/drafts")
+
+        assert response.status_code == 200
+        listed = response.json()["data"]["items"][0]
+        assert listed["draft_status"] == "published"
+        assert listed["exports"]["draft_turtle"] == generated["draft_turtle"]
+        assert "release" not in listed

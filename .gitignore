@@ -12,4 +12,5 @@ __pycache__/
 .ruff_cache/
 logs/
 .runlogs/
+runtime/cq-releases/
 *.tmp

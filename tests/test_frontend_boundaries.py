@@ -299,6 +299,12 @@ def test_cq_page_exposes_reviewed_draft_publish_action() -> None:
     assert '"payload": edited_payload' in text
     assert '"/cq-engine/drafts/{selected_draft_id}/publish"' in text
     assert 'api_request("POST", f"/cq-engine/drafts/{selected_draft_id}/publish"' in text
+    assert 'api_request("GET", "/cq-engine/releases"' in text
+    assert 'if releases_envelope.get("ok"):' in text
+    assert "render_envelope_feedback(releases_envelope" in text
+    assert "发布历史" in text
+    assert "最近发布" in text
+    assert "release_id" in text
     assert "exports" in text
     assert "draft_turtle" in text
     assert "candidate_rules" in text

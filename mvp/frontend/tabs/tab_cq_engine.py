@@ -78,9 +78,15 @@ def render() -> None:
     drafts_envelope = api_request("GET", "/cq-engine/drafts", record_trace=False)
     drafts = extract_data(drafts_envelope, default={}) or {}
     draft_items = list(drafts.get("items") or [])
+    releases_envelope = api_request("GET", "/cq-engine/releases", trace_key=TRACE_KEY, trace_title="CQ 发布历史")
+    release_items: list[dict[str, Any]] = []
+    if releases_envelope.get("ok"):
+        releases = extract_data(releases_envelope, default={}) or {}
+        release_items = list(releases.get("items") or [])
 
     st.markdown("**草案列表**")
     render_dataframe(_draft_rows(draft_items), empty_text="暂无草案。")
+    _render_release_history(release_items, releases_envelope)
 
     if not draft_items:
         render_trace(TRACE_KEY)
@@ -118,6 +124,7 @@ def render() -> None:
             if envelope.get("ok"):
                 published_draft = extract_data(envelope, default={}) or {}
                 selected_draft = published_draft
+                st.rerun()
     with status_col:
         st.caption(
             f"当前草案：{selected_draft.get('draft_id', '-')} | 状态：{selected_draft.get('draft_status', '-')} | "
@@ -147,6 +154,41 @@ def _draft_rows(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
                 "类数": len(list(payload.get("candidate_classes") or [])),
                 "关系数": len(list(payload.get("candidate_relations") or [])),
                 "规则数": len(list(payload.get("candidate_rules") or [])),
+            }
+        )
+    return rows
+
+
+def _render_release_history(items: list[dict[str, Any]], releases_envelope: dict[str, Any]) -> None:
+    st.markdown("**发布历史**")
+    if not releases_envelope.get("ok"):
+        render_envelope_feedback(releases_envelope)
+        return
+    if items:
+        latest = items[-1]
+        files = latest.get("files") or {}
+        st.caption(
+            f"最近发布：{latest.get('release_id', '-')} | 版本：{latest.get('version', '-')} | "
+            f"Manifest：{files.get('manifest', '-')}"
+        )
+    render_dataframe(_release_rows(items), empty_text="暂无发布历史。")
+
+
+def _release_rows(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    for item in items:
+        files = item.get("files") or {}
+        rows.append(
+            {
+                "发布ID": item.get("release_id"),
+                "版本": item.get("version"),
+                "草案ID": item.get("draft_id"),
+                "本体": item.get("ontology_id"),
+                "发布时间": item.get("published_at"),
+                "Manifest": files.get("manifest"),
+                "Turtle": files.get("draft_turtle"),
+                "规则": files.get("candidate_rules"),
+                "SPARQL": files.get("draft_sparql_tests"),
             }
         )
     return rows

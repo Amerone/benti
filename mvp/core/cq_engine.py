@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime, timezone
 import json
 from pathlib import Path
 import re
+import shutil
 from typing import Any
 
 from rdflib import Literal, URIRef
@@ -35,7 +37,9 @@ class CQEngineError(ValueError):
     """Raised when commission CQ metadata or draft lifecycle rules are violated."""
 
 
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_CQ_PATH = Path("docs/cq/commission-testing-cqs.md")
+DEFAULT_RELEASE_ROOT = PROJECT_ROOT / "runtime" / "cq-releases"
 REQUIRED_METADATA_FIELDS = (
     "Business question",
     "Intent",
@@ -108,9 +112,11 @@ class CQDraftService:
         *,
         repository: BusinessGraphRepository | None = None,
         ontology_id: str = commission_graph.ONTOLOGY_ID,
+        release_root: str | Path | None = None,
     ) -> None:
         self.repository = repository or BusinessGraphRepository()
         self.ontology_id = ontology_id
+        self.release_root = Path(release_root).resolve() if release_root is not None else DEFAULT_RELEASE_ROOT
 
     def save_draft(self, payload: dict[str, Any]) -> dict[str, Any]:
         validate_draft_payload(payload)
@@ -128,6 +134,10 @@ class CQDraftService:
     def list_drafts(self) -> dict[str, Any]:
         data_graph = self.repository.graph(self.ontology_id, "data")
         items = [self._serialize_draft(data_graph, node) for node in self._draft_nodes(data_graph)]
+        return {"items": items, "total": len(items)}
+
+    def list_releases(self) -> dict[str, Any]:
+        items = self._release_manifests()
         return {"items": items, "total": len(items)}
 
     def update_status(self, draft_id: str, draft_status: str) -> dict[str, Any]:
@@ -173,10 +183,19 @@ class CQDraftService:
         if draft["draft_status"] != "reviewed":
             raise CQEngineError("draft must be reviewed before publish")
         validate_draft_payload(draft["payload"])
+        exports = self._export_payload(draft["payload"])
+        release = self._build_release_manifest(draft["draft_id"], exports)
+        self._write_release(release, exports)
         data_graph.set((draft_node, commission_graph.CTO.draftStatus, Literal("published")))
-        self._sync()
+        try:
+            self._sync()
+        except Exception:
+            data_graph.set((draft_node, commission_graph.CTO.draftStatus, Literal("reviewed")))
+            self._delete_release(release)
+            raise
         published = self._serialize_draft(data_graph, draft_node)
-        published["exports"] = self._export_payload(published["payload"])
+        published["exports"] = exports
+        published["release"] = release
         return published
 
     def _draft_nodes(self, data_graph) -> list[URIRef]:
@@ -213,6 +232,12 @@ class CQDraftService:
         }
         if draft["draft_status"] == "published":
             draft["exports"] = self._export_payload(payload)
+            try:
+                release = self._latest_release_for_draft(draft["draft_id"])
+            except CQEngineError:
+                release = None
+            if release is not None:
+                draft["release"] = release
         return draft
 
     def _export_payload(self, payload: dict[str, Any]) -> dict[str, Any]:
@@ -226,6 +251,107 @@ class CQDraftService:
 
     def _sync(self) -> None:
         self.repository._sync_graph_to_remote(self.ontology_id, "data")
+
+    def _build_release_manifest(self, draft_id: str, exports: dict[str, Any]) -> dict[str, Any]:
+        release_number = self._next_release_number()
+        release_id = f"CQR-{release_number:03d}"
+        release_dir = self.release_root / self.ontology_id / release_id
+        turtle_path = release_dir / "draft.ttl"
+        rules_path = release_dir / "candidate-rules.json"
+        sparql_path = release_dir / "sparql-tests.json"
+        manifest_path = release_dir / "manifest.json"
+
+        release = {
+            "release_id": release_id,
+            "version": f"v{release_number}",
+            "draft_id": draft_id,
+            "ontology_id": self.ontology_id,
+            "published_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+            "files": {
+                "manifest": _display_path(manifest_path),
+                "draft_turtle": _display_path(turtle_path),
+                "candidate_rules": _display_path(rules_path),
+                "draft_sparql_tests": _display_path(sparql_path),
+            },
+        }
+        return release
+
+    def _write_release(self, release: dict[str, Any], exports: dict[str, Any]) -> None:
+        release_id = str(release["release_id"])
+        release_dir = self.release_root / self.ontology_id / release_id
+        tmp_dir = self.release_root / self.ontology_id / f".{release_id}.tmp"
+        try:
+            if tmp_dir.exists():
+                shutil.rmtree(tmp_dir)
+            tmp_dir.mkdir(parents=True)
+            (tmp_dir / "draft.ttl").write_text(str(exports["draft_turtle"]), encoding="utf-8")
+            (tmp_dir / "candidate-rules.json").write_text(
+                json.dumps(exports["candidate_rules"], ensure_ascii=False, indent=2),
+                encoding="utf-8",
+            )
+            (tmp_dir / "sparql-tests.json").write_text(
+                json.dumps(exports["draft_sparql_tests"], ensure_ascii=False, indent=2),
+                encoding="utf-8",
+            )
+            (tmp_dir / "manifest.json").write_text(
+                json.dumps(release, ensure_ascii=False, indent=2, sort_keys=True),
+                encoding="utf-8",
+            )
+            if release_dir.exists():
+                raise CQEngineError(f"release directory already exists: {release_dir}")
+            tmp_dir.replace(release_dir)
+        except OSError as exc:
+            raise CQEngineError(f"release files could not be written: {exc}") from exc
+        finally:
+            if tmp_dir.exists():
+                shutil.rmtree(tmp_dir)
+
+    def _delete_release(self, release: dict[str, Any]) -> None:
+        release_dir = self.release_root / self.ontology_id / str(release["release_id"])
+        if release_dir.exists():
+            shutil.rmtree(release_dir)
+
+    def _next_release_number(self) -> int:
+        highest = 0
+        release_dir = self.release_root / self.ontology_id
+        if release_dir.exists():
+            for path in release_dir.glob("CQR-*"):
+                if not path.is_dir():
+                    continue
+                try:
+                    highest = max(highest, int(path.name.split("-", 1)[1]))
+                except (IndexError, ValueError):
+                    continue
+        return highest + 1
+
+    def _release_manifests(self) -> list[dict[str, Any]]:
+        release_dir = self.release_root / self.ontology_id
+        if not release_dir.exists():
+            return []
+        items: list[dict[str, Any]] = []
+        for manifest_path in release_dir.glob("CQR-*/manifest.json"):
+            try:
+                manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError) as exc:
+                raise CQEngineError(f"release manifest is unreadable: {manifest_path}") from exc
+            self._validate_release_manifest(manifest, manifest_path)
+            items.append(manifest)
+        return sorted(items, key=_release_sort_key)
+
+    def _latest_release_for_draft(self, draft_id: str) -> dict[str, Any] | None:
+        matches = [release for release in self._release_manifests() if release.get("draft_id") == draft_id]
+        return matches[-1] if matches else None
+
+    def _validate_release_manifest(self, manifest: Any, manifest_path: Path) -> None:
+        if not isinstance(manifest, dict):
+            raise CQEngineError(f"release manifest is invalid: {manifest_path}")
+        required = {"release_id", "version", "draft_id", "ontology_id", "published_at", "files"}
+        if not required.issubset(manifest):
+            raise CQEngineError(f"release manifest is invalid: {manifest_path}")
+        files = manifest.get("files")
+        required_files = {"manifest", "draft_turtle", "candidate_rules", "draft_sparql_tests"}
+        if not isinstance(files, dict) or not required_files.issubset(files):
+            raise CQEngineError(f"release manifest is invalid: {manifest_path}")
 
 
 class CommissionCQRunner:
@@ -347,3 +473,18 @@ def validate_draft_payload(payload: dict[str, Any]) -> None:
 def _literal_text(data_graph, subject: URIRef, predicate) -> str:
     obj = next(data_graph.objects(subject, predicate), None)
     return str(obj) if obj is not None else ""
+
+
+def _display_path(path: Path) -> str:
+    try:
+        return path.resolve().relative_to(Path.cwd().resolve()).as_posix()
+    except ValueError:
+        return path.resolve().as_posix()
+
+
+def _release_sort_key(release: dict[str, Any]) -> tuple[int, int | str]:
+    release_id = str(release.get("release_id") or "")
+    try:
+        return (0, int(release_id.split("-", 1)[1]))
+    except (IndexError, ValueError):
+        return (1, release_id)

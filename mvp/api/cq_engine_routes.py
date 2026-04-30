@@ -48,6 +48,14 @@ def create_router() -> APIRouter:
         result = await run_in_threadpool(request.app.state.cq_draft_service.list_drafts)
         return envelope.ok(result, trace=request.state.trace)
 
+    @router.get("/releases")
+    async def list_releases(request: Request):
+        try:
+            result = await run_in_threadpool(request.app.state.cq_draft_service.list_releases)
+        except CQEngineError as exc:
+            raise _cq_engine_domain_error(exc) from exc
+        return envelope.ok(result, trace=request.state.trace)
+
     @router.post("/drafts")
     async def save_draft(payload: SaveDraftRequest, request: Request):
         try:
